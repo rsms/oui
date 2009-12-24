@@ -255,26 +255,24 @@ function createServer(silent) {
 		req.addListener('complete', function(){
 			// call route, if any
 			var rsp = null
-			if (route) {
-				try {
-					// let handler act on req and res, possibly returning body struct
-					rsp = route.handler(req.params, req, res)
-				}
-				catch(ex) {
-					// format exception
-					sys.error('\n' + (ex.stack || ex.message))
-					res.status = 500
-					rsp = {error:{
-						title: 'Internal Server Error',
-						message: ex.message,
-						stack: ex.stack.split(/[\r\n]+ +/m)
-					}}
-				}
-				
-				// did the handler finish the response or take over responsibility?
-				if (res.finished || rsp === false)
-					return;
+			try {
+				// let handler act on req and res, possibly returning body struct
+				rsp = route.handler(req.params, req, res)
 			}
+			catch(ex) {
+				// format exception
+				sys.error('\n' + (ex.stack || ex.message))
+				res.status = 500
+				rsp = {error:{
+					title: 'Internal Server Error',
+					message: ex.message,
+					stack: ex.stack.split(/[\r\n]+ +/m)
+				}}
+			}
+			
+			// did the handler finish the response or take over responsibility?
+			if (res.finished || rsp === false)
+				return;
 			
 			// format rsp, if any
 			// todo: content-negotiation or something else (strict) -- just something, please
