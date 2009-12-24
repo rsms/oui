@@ -185,14 +185,17 @@ var response_mixins = {
 						}
 					}).addErrback(function () {
 						promise.emitError.apply(promise, arguments);
+						// todo: move the res.finish and co up here + impl the two todos below this line
 					});
 				}
 				readChunk();
 			}).addErrback(function () {
 				promise.emitError.apply(promise, arguments);
+				// todo: send 401 if not readable or 500
 			});
 		}).addErrback(function () {
 			promise.emitError.apply(promise, arguments);
+			// todo: send 404 if not found or 401 if not readable
 		});
 		
 		promise.addErrback(function () {
