@@ -248,6 +248,8 @@ function createServer(silent) {
 		// extract url-encoded body parts into req
 		if (req.headers['content-type'] === 'application/x-www-form-urlencoded')
 			req.addListener('body', req.extractFormParams)
+		// todo: handle other kinds of payloads, like file uploads and arbitrary data.
+		//       Q: Will "complete" be emitted even if there is data still to be read?
 		
 		// take action when request is completely received
 		req.addListener('complete', function(){
