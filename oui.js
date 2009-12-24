@@ -153,6 +153,8 @@ var response_mixins = {
 		
 		// stat to get file size
 		posix.stat(path).addCallback(function (s,x) {
+			if (contentType)
+				res.headers.push(['Content-Type', contentType])
 			res.headers.push(['Content-Length', s.size])
 			res.headers.push(['Last-Modified', s.mtime.toUTCString()])
 			res.headers.push(['ETag', '"'+stat2etag(s)+'"'])
@@ -165,23 +167,23 @@ var response_mixins = {
 			res.flush()
 			
 			// send file
-			encoding = 'binary';
+			encoding = 'binary'
+			readsize = 16*1024
 			posix.open(path, process.O_RDONLY, 0666).addCallback(function (fd) {
 				var pos = 0;
 				function readChunk () {
-					posix.read(fd, 16*1024, pos, encoding).addCallback(function (chunk, bytes_read) {
+					posix.read(fd, readsize, pos, encoding).addCallback(function (chunk, bytes_read) {
 						if (chunk) {
 							res.send(chunk, encoding)
 							pos += bytes_read
 							readChunk()
 						}
 						else { // EOF
-							promise.emitSuccess(pos)
 							posix.close(fd)
 							res.finish()
+							promise.emitSuccess(pos)
 						}
 					}).addErrback(function () {
-						//promise.emitError.call(arguments);
 						promise.emitError.apply(promise, arguments);
 					});
 				}
