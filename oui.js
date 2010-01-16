@@ -215,10 +215,14 @@ var response_mixins = {
 		return {error:e};
 	},
 	
-	sendError: function(status, title, message, exception) {
-		responseObject = this.mkError(status, title, message, exception)
+	sendObject: function(responseObject) {
 		body = this.format(responseObject)
 		this.request.sendResponse(body)
+	},
+	
+	sendError: function(status, title, message, exception) {
+		responseObject = this.mkError(status, title, message, exception)
+		this.sendObject(responseObject)
 	},
 	
 	sendFile: function(path, contentType, stats) {
