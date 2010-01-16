@@ -10,14 +10,19 @@
 
 	Inspired by picard and smisk.
 
-	URL:     http://github.com/rsms/oui
-	Author:  Rasmus Andersson <http://hunch.se/>
+	URL:		 http://github.com/rsms/oui
+	Author:	Rasmus Andersson <http://hunch.se/>
 	License: MIT (basically do whatever you want -- see LICENSE for details)
 
  */
 http = require('http')
 sys = require('sys')
 posix = require('posix')
+url = require("url")
+querystring = require("querystring")
+mpath = require('path')
+
+DOCUMENT_ROOT = '/dev/null'
 
 var routes = {
 	GET: [],
@@ -30,24 +35,47 @@ exports.routes = routes
 // utils:
 
 function uridecode(s) {
-  return decodeURIComponent(s.replace(/\+/g, ' '));
+	return querystring.unescape(s, true)
 }
 
 function stat2etag(s) {
-  return s.mtime.getTime().toString(36)+s.ino.toString(36)+s.mode.toString(36)
+	return s.mtime.getTime().toString(36)+s.ino.toString(36)+s.mode.toString(36)
 }
 
 // request and response mixins:
 
 var request_mixins = {
+	prepare: function() {
+		this.path = this.url
+		this.url = url.parse(this.url, true)
+		this.params = {}
+		// copy, not assign, query -> params
+		var m = this.url.query
+		for (var k in m) this.params[k] = m[k]
+		// exc handler -- WIP, currently broken
+		/*sys.puts('ADD')
+		var path = this.path;
+		var self = this
+		var finish = function() {
+			self.finish()
+		}
+		var eh = function(e) {
+			sys.error('error while handling request '+path)
+			finish()
+		}
+		process.addListener('uncaughtException', eh)
+		this.addListener('response', function() {
+			sys.puts('REMOVE')
+			process.removeListener('uncaughtException', eh)
+		})*/
+	},
+	
 	extractFormParams: function(chunk) {
 		if (chunk === undefined)
 			return;
-		var pairs = chunk.split('&')
-		for (var i in pairs) {
-			var k_v = pairs[i].split('=')
-			this.params[uridecode(k_v[0])] = k_v.length > 1 ? uridecode(k_v[1]) : null
-		}
+		var params = querystring.parse(chunk)
+		for (var k in params)
+			this.params[k] = params[k];
 	},
 	
 	processHeaders: function() {
@@ -70,7 +98,7 @@ var request_mixins = {
 			return
 		for (var i=0, L = rv.length; i < L; i++){
 			var route = rv[i]
-			var matches = this.uri.path.match(route.path)
+			var matches = this.url.pathname.match(route.path)
 			if (matches) {
 				route.extractParams(this, matches)
 				return route
@@ -137,6 +165,16 @@ var request_mixins = {
 
 
 var response_mixins = {
+	prepare: function() {
+		this.headers = [
+			['Server', SERVER_NAME],
+			['Date', (new Date()).toUTCString()]
+		]
+		this.status = 200
+		this.encoding = 'utf-8'
+		this.type = 'text/html'
+	},
+	
 	// monkey patch sendHeader so we can set some headers automatically
 	sendHeader: function(statusCode, headers) {
 		statusCode = statusCode || this.status
@@ -147,12 +185,48 @@ var response_mixins = {
 			this.finish()
 	},
 	
-	sendFile: function(path, contentType) {
+	format: function(obj) {
+		if (obj === undefined)
+			return null;
+		// todo: content-negotiation or something else (strict) -- just something, please
+		this.type = 'application/json'
+		return JSON.stringify(obj)
+	},
+	
+	/**
+	 * Build a error response object.
+	 *
+	 * {error:{
+	 *   title: <string>,
+	 *   message: <string>,
+	 *   stack: [<string>, ..]
+	 * }}
+	 */
+	mkError: function(status, title, message, exception) {
+		this.status = (status && typeof status === 'number') ? status : 500
+		e = {title: (title && title.constructor === String) ? title : 'Internal Server Error'}
+		if (exception) {
+			if (message) e.message = message ? String(message) + exception.message : String(exception.message)
+			if (exception.stack) e.stack = exception.stack.split(/[\r\n]+ +/m)
+		}
+		else if (message) {
+			e.message = String(message)
+		}
+		return {error:e};
+	},
+	
+	sendError: function(status, title, message, exception) {
+		responseObject = this.mkError(status, title, message, exception)
+		body = this.format(responseObject)
+		this.request.sendResponse(body)
+	},
+	
+	sendFile: function(path, contentType, stats) {
+		if (!path || path.constructor !== String)
+			throw 'first argument must be a string'
 		var promise = new process.Promise();
 		var res = this;
-		
-		// stat to get file size
-		posix.stat(path).addCallback(function (s,x) {
+		var statsCb = function (s) {
 			if (contentType)
 				res.headers.push(['Content-Type', contentType])
 			res.headers.push(['Content-Length', s.size])
@@ -193,19 +267,32 @@ var response_mixins = {
 				promise.emitError.apply(promise, arguments);
 				// todo: send 401 if not readable or 500
 			});
-		}).addErrback(function () {
-			promise.emitError.apply(promise, arguments);
-			// todo: send 404 if not found or 401 if not readable
-		});
+		}
 		
+		// top level error handler
 		promise.addErrback(function () {
 			sys.error('sendFile failed for "'+path+'"')
 			res.closeOnFinish = true
 			res.finish()
 		})
 		
+		// do we have a stats object?
+		if (typeof stats === 'object') {
+			statsCb(stats)
+		}
+		else {
+			posix.stat(path).addCallback(statsCb).addErrback(function () {
+				res.sendError(404, 'File not found', 'No file at "'+path+'"')
+			});
+		}
+		
 		return promise;
 	}
+}
+
+
+function outerExceptionHandler(e) {
+	sys.puts(e)
 }
 
 
@@ -219,17 +306,11 @@ function createServer(silent) {
 		req.response = res
 		res.request = req
 		
-		res.headers = [
-			['Server', SERVER_NAME],
-			['Date', (new Date()).toUTCString()]
-		]
-		res.status = 200
-		res.encoding = 'utf-8'
-		res.type = 'text/html'
-		req.params = {}
+		req.prepare()
+		res.prepare()
 		
 		// log request
-		silent || sys.puts(req.method+' '+req.uri.full)
+		silent || sys.puts(req.method+' '+req.path)
 		
 		// solve route
 		var route = req.findRoute()
@@ -239,9 +320,6 @@ function createServer(silent) {
 			return
 		}
 		
-		// add query string params
-		req.extractFormParams(req.uri.queryString)
-		
 		// process headers (cookies etc)
 		req.processHeaders()
 		
@@ -249,38 +327,30 @@ function createServer(silent) {
 		if (req.headers['content-type'] === 'application/x-www-form-urlencoded')
 			req.addListener('body', req.extractFormParams)
 		// todo: handle other kinds of payloads, like file uploads and arbitrary data.
-		//       Q: Will "complete" be emitted even if there is data still to be read?
+		//			 Q: Will "complete" be emitted even if there is data still to be read?
 		
 		// take action when request is completely received
 		req.addListener('complete', function(){
 			// call route, if any
-			var rsp = null
+			var responseObject = null
 			try {
 				// let handler act on req and res, possibly returning body struct
-				rsp = route.handler(req.params, req, res)
+				responseObject = route.handler(req.params, req, res)
 			}
 			catch(ex) {
 				// format exception
 				sys.error('\n' + (ex.stack || ex.message))
-				res.status = 500
-				rsp = {error:{
-					title: 'Internal Server Error',
-					message: ex.message,
-					stack: ex.stack.split(/[\r\n]+ +/m)
-				}}
+				responseObject = res.mkError(null, null, ex)
 			}
 			
 			// did the handler finish the response or take over responsibility?
-			if (res.finished || rsp === false)
+			if (res.finished || responseObject === false)
 				return;
 			
-			// format rsp, if any
-			// todo: content-negotiation or something else (strict) -- just something, please
-			var body = rsp;
-			if (rsp && rsp.constructor !== String) {
-				body = JSON.stringify(rsp)
-				res.type = 'application/json'
-			}
+			// format responseObject
+			var body = responseObject;
+			if (responseObject && responseObject.constructor !== String)
+				body = res.format(responseObject)
 			
 			// send and mark as finished
 			req.sendResponse(body)
@@ -360,3 +430,29 @@ exports.expose = function(methods, path, handler){
 		GLOBAL[method] && GLOBAL[method](path, handler)
 	return handler
 }
+
+
+/** Handler which takes care of requests for files */
+function staticFileHandler(params, req, res) {
+	relpath = req.url.pathname ? req.url.pathname.replace(/([\.]{2,}|^\/+|\/+$)/, '') : ''
+	abspath = mpath.join(oui.DOCUMENT_ROOT, relpath)
+	
+	posix.stat(abspath).addCallback(function(stats) {
+		if (stats.isFile()) {
+			type = mimetype.lookup(mpath.extname(relpath))
+			if (!type)
+				type = 'application/octet-stream'
+			res.sendFile(abspath, type, stats)
+		}
+		// todo: stats.isDirectory(), list...
+		else {
+			DEBUG && sys.puts('"'+relpath+'" is not a readable file. stats => '+JSON.stringify(stats))
+			res.sendError(404, 'Unable to handle file', '"'+relpath+'" is not a readable file')
+		}
+	}).addErrback(function() {
+		res.sendError(404, 'File not found', 'No file at '+req.url.raw, null)
+	})
+	
+	return false
+}
+exports.staticFileHandler = staticFileHandler
