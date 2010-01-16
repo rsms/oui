@@ -22,7 +22,8 @@ url = require("url")
 querystring = require("querystring")
 mpath = require('path')
 
-DOCUMENT_ROOT = '/dev/null'
+exports.SERVER_NAME = 'oui/0.1 node/'+process.version
+exports.DOCUMENT_ROOT = '/dev/null'
 
 var routes = {
 	GET: [],
@@ -42,9 +43,8 @@ function stat2etag(s) {
 	return s.mtime.getTime().toString(36)+s.ino.toString(36)+s.mode.toString(36)
 }
 
-// request and response mixins:
-
-var request_mixins = {
+// request additions
+process.mixin(http.IncomingMessage.prototype, {
 	prepare: function() {
 		this.path = this.url
 		this.url = url.parse(this.url, true)
@@ -86,8 +86,8 @@ var request_mixins = {
 			s.split(/; */).forEach(function(cookie){
 				var p = cookie.indexOf('=')
 				if (p !== -1)
-					self.cookie(decodeURIComponent(cookie.substr(0, p)),
-						decodeURIComponent(cookie.substr(p+1)), { preset: true })
+					self.cookie(decodeURIComponent(cookie.substr(0, p).replace(/(^\s+|\s+$)/,'')),
+						decodeURIComponent(cookie.substr(p+1).replace(/(^\s+|\s+$)/,'')), { preset: true })
 			})
 		}
 	},
@@ -161,13 +161,15 @@ var request_mixins = {
 		}
 		res.finish()
 	}
-}
+})
 
 
-var response_mixins = {
+// response additions
+var _sendHeader = http.ServerResponse.prototype.sendHeader
+process.mixin(http.ServerResponse.prototype, {
 	prepare: function() {
 		this.headers = [
-			['Server', SERVER_NAME],
+			['Server', exports.SERVER_NAME],
 			['Date', (new Date()).toUTCString()]
 		]
 		this.status = 200
@@ -180,7 +182,7 @@ var response_mixins = {
 		statusCode = statusCode || this.status
 		headers = headers || this.headers
 		this.request.appendCookieHeaders(headers)
-		http.ServerResponse.prototype.sendHeader.apply(this, [statusCode, headers]);
+		_sendHeader.apply(this, [statusCode, headers]);
 		if (this.request.method === 'HEAD')
 			this.finish()
 	},
@@ -292,21 +294,11 @@ var response_mixins = {
 		
 		return promise;
 	}
-}
+})
 
-
-function outerExceptionHandler(e) {
-	sys.puts(e)
-}
-
-
-var SERVER_NAME = 'oui/0.1 node/'+process.version
 
 function createServer(silent) {
 	return http.createServer(function(req, res) {
-		process.mixin(req, request_mixins)
-		process.mixin(res, response_mixins)
-		
 		req.response = res
 		res.request = req
 		
@@ -439,7 +431,7 @@ exports.expose = function(methods, path, handler){
 /** Handler which takes care of requests for files */
 function staticFileHandler(params, req, res) {
 	relpath = req.url.pathname ? req.url.pathname.replace(/([\.]{2,}|^\/+|\/+$)/, '') : ''
-	abspath = mpath.join(oui.DOCUMENT_ROOT, relpath)
+	abspath = mpath.join(exports.DOCUMENT_ROOT, relpath)
 	
 	posix.stat(abspath).addCallback(function(stats) {
 		if (stats.isFile()) {
