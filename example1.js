@@ -1,4 +1,5 @@
-require('./oui').start(8080)
+oui = require('./oui')
+oui.start(8080)
 
 GET('/hello', function(){
 	return 'Hello to you too sir'
@@ -11,12 +12,9 @@ POST('/echo/:message', GET('/echo/:message', function(params, req, res){
 	// returning complex objects automatically sends JSON (subject to change)
 	return {
 		key: 'some value',
-		params_in: params
+		params: params
 	}
 }))
 
-// Send a static file, possibly at the OS kernel level
-GET('/sendfile', function(params, req, res) {
-	res.sendFile('/change/this/to/real/path/to/a/file.jpg', 'image/jpeg')
-	return false
-})
+// Serve static files
+GET(/^.+/, oui.staticFileHandler)
