@@ -22,8 +22,12 @@ url = require("url")
 querystring = require("querystring")
 mpath = require('path')
 
+RE_OUTER_WHITESPACE = /(^\s+|\s+$)/g
+RE_OUTER_DQUOTES = /(^"+|"+$)/g
+RE_COMMA_WS = /,\s*/
+
 exports.SERVER_NAME = 'oui/0.1 node/'+process.version
-exports.DOCUMENT_ROOT = '/dev/null'
+exports.debug = false
 
 var routes = {
 	GET: [],
@@ -69,7 +73,7 @@ process.mixin(http.IncomingMessage.prototype, {
 			process.removeListener('uncaughtException', eh)
 		})*/
 	},
-	
+
 	extractFormParams: function(chunk) {
 		if (chunk === undefined)
 			return;
@@ -77,7 +81,7 @@ process.mixin(http.IncomingMessage.prototype, {
 		for (var k in params)
 			this.params[k] = params[k];
 	},
-	
+
 	processHeaders: function() {
 		this.cookies = {}
 		var self = this
@@ -86,12 +90,12 @@ process.mixin(http.IncomingMessage.prototype, {
 			s.split(/; */).forEach(function(cookie){
 				var p = cookie.indexOf('=')
 				if (p !== -1)
-					self.cookie(decodeURIComponent(cookie.substr(0, p).replace(/(^\s+|\s+$)/,'')),
-						decodeURIComponent(cookie.substr(p+1).replace(/(^\s+|\s+$)/,'')), { preset: true })
+					self.cookie(decodeURIComponent(cookie.substr(0, p).replace(RE_OUTER_WHITESPACE,'')),
+						decodeURIComponent(cookie.substr(p+1).replace(RE_OUTER_WHITESPACE,'')), { preset: true })
 			})
 		}
 	},
-	
+
 	findRoute: function() {
 		var rv = routes[(this.method === 'HEAD') ? 'GET' : this.method];
 		if (rv === undefined)
@@ -105,7 +109,7 @@ process.mixin(http.IncomingMessage.prototype, {
 			}
 		}
 	},
-	
+
 	/**
 	 * Get or set a cookie
 	 */
@@ -117,7 +121,7 @@ process.mixin(http.IncomingMessage.prototype, {
 		options.path = options.path || '/'
 		this.cookies[name] = options
 	},
-	
+
 	appendCookieHeaders: function(headers) {
 		var ret, name, options
 		for (name in this.cookies) {
@@ -137,7 +141,7 @@ process.mixin(http.IncomingMessage.prototype, {
 		}
 		return headers
 	},
-	
+
 	/** send response */
 	sendResponse: function(body) {
 		var res = this.response
@@ -176,17 +180,25 @@ process.mixin(http.ServerResponse.prototype, {
 		this.encoding = 'utf-8'
 		this.type = 'text/html'
 	},
-	
+
 	// monkey patch sendHeader so we can set some headers automatically
 	sendHeader: function(statusCode, headers) {
 		statusCode = statusCode || this.status
 		headers = headers || this.headers
 		this.request.appendCookieHeaders(headers)
 		_sendHeader.apply(this, [statusCode, headers]);
+		if (this.request.connection.server.debug) {
+			var r = this.request
+			var s = '[oui] HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+
+				statusCode + ' ' + http.STATUS_CODES[statusCode]
+			for (var k in headers)
+				s += '\n  '+headers[k][0]+': '+headers[k][1]
+			sys.debug(s)
+		}
 		if (this.request.method === 'HEAD')
 			this.finish()
 	},
-	
+
 	format: function(obj) {
 		if (obj === undefined)
 			return null;
@@ -194,7 +206,7 @@ process.mixin(http.ServerResponse.prototype, {
 		this.type = 'application/json'
 		return JSON.stringify(obj)
 	},
-	
+
 	/**
 	 * Build a error response object.
 	 *
@@ -216,36 +228,90 @@ process.mixin(http.ServerResponse.prototype, {
 		}
 		return {error:e};
 	},
-	
+
 	sendObject: function(responseObject) {
 		body = this.format(responseObject)
 		this.request.sendResponse(body)
 	},
-	
+
 	sendError: function(status, title, message, exception) {
 		responseObject = this.mkError(status, title, message, exception)
 		this.sendObject(responseObject)
 	},
-	
-	sendFile: function(path, contentType, stats) {
+
+	doesMatchRequestPredicates: function(etag, mtime) {
+		if (etag) {
+			var nomatch = this.request.headers['if-none-match']
+			if (nomatch !== undefined) {
+				if (nomatch === '*') return 304
+				v = nomatch.split(RE_COMMA_WS)
+				for (var i in v) {
+					t = v[i].replace(RE_OUTER_DQUOTES,'')
+					if (t === etag) return 304
+				}
+			}
+			var domatch = this.request.headers['if-match']
+			if (domatch !== undefined) {
+				if (domatch === '*') return false
+				v = domatch.split(RE_COMMA_WS)
+				for (var i in v) {
+					t = v[i].replace(RE_OUTER_DQUOTES,'')
+					if (t === etag) return false
+				}
+				return 412
+			}
+			if (nomatch !== undefined)
+				return false
+		}
+
+		if (mtime) {
+			var ifmodsince = this.request.headers['if-modified-since']
+			if (ifmodsince) {
+				ifmodsince = new Date(ifmodsince)
+				if (mtime <= ifmodsince)
+					return 304
+			}
+		}
+
+		return false
+	},
+
+	sendFile: function(path, contentType, stats, successCb) {
 		if (!path || path.constructor !== String)
 			throw 'first argument must be a string'
 		var promise = new process.Promise();
+		// we need to set successCb here as a pre-stat'ed file in combo with
+		// if-match*, no I/O is done thus we will emitSuccess before returning control.
+		if (typeof successCb === 'function')
+			promise.addCallback(successCb)
 		var res = this;
+
 		var statsCb = function (s) {
+			var etag = stat2etag(s)
+
 			if (contentType)
 				res.headers.push(['Content-Type', contentType])
 			res.headers.push(['Content-Length', s.size])
 			res.headers.push(['Last-Modified', s.mtime.toUTCString()])
-			res.headers.push(['ETag', '"'+stat2etag(s)+'"'])
-			
-			// todo: check request headers and reply with 304 Not Modified if appropriate
-			
+			res.headers.push(['ETag', '"'+etag+'"'])
+
+			// not modified?
+			var match_status = res.doesMatchRequestPredicates(etag, s.mtime)
+			if (match_status) {
+				met = res.request.method
+				res.status = (met === 'GET' || me === 'HEAD') ? match_status : 412
+			}
+
 			// send headers
 			res.chunked_encoding = false
 			res.sendHeader()
 			res.flush()
-			
+			if (match_status) {
+				res.finish()
+				promise.emitSuccess(0)
+				return
+			}
+
 			// send file
 			encoding = 'binary'
 			readsize = 16*1024
@@ -274,14 +340,14 @@ process.mixin(http.ServerResponse.prototype, {
 				// todo: send 401 if not readable or 500
 			});
 		}
-		
+
 		// top level error handler
 		promise.addErrback(function () {
 			sys.error('sendFile failed for "'+path+'"')
 			res.closeOnFinish = true
 			res.finish()
 		})
-		
+
 		// do we have a stats object?
 		if (typeof stats === 'object') {
 			statsCb(stats)
@@ -291,23 +357,31 @@ process.mixin(http.ServerResponse.prototype, {
 				res.sendError(404, 'File not found', 'No file at "'+path+'"')
 			});
 		}
-		
+
 		return promise;
 	}
 })
 
 
-function createServer(silent) {
-	return http.createServer(function(req, res) {
+function createServer() {
+	server = http.createServer(function(req, res) {
 		req.response = res
 		res.request = req
-		
+
 		req.prepare()
 		res.prepare()
-		
+
 		// log request
-		silent || sys.puts(req.method+' '+req.path)
-		
+		if (this.debug) {
+			var s = '[oui] '+req.method+' '+req.path
+			for (var k in req.headers)
+				s += '\n  '+k+': '+req.headers[k]
+			sys.debug(s)
+		}
+		else if (this.verbose) {
+			sys.puts('[oui] '+req.method+' '+req.path)
+		}
+
 		// solve route
 		var route = req.findRoute()
 		if (route === undefined) {
@@ -315,51 +389,58 @@ function createServer(silent) {
 			req.sendResponse('<h1>'+req.uri.path+' not found</h1>\n')
 			return
 		}
-		
+
 		// process headers (cookies etc)
 		req.processHeaders()
-		
+
 		// extract url-encoded body parts into req
 		if (req.headers['content-type'] === 'application/x-www-form-urlencoded')
 			req.addListener('body', req.extractFormParams)
 		// todo: handle other kinds of payloads, like file uploads and arbitrary data.
 		//			 Q: Will "complete" be emitted even if there is data still to be read?
-		
+
 		// take action when request is completely received
 		req.addListener('complete', function(){
+			server.debug && sys.debug('[oui] request '+req.method+' '+req.path+' completed -- creating response')
+
 			// call route, if any
 			var responseObject = null
 			try {
 				// let handler act on req and res, possibly returning body struct
-				responseObject = route.handler(req.params, req, res)
+				responseObject = route.handler.apply(server, [req.params, req, res])
 			}
 			catch(ex) {
 				// format exception
-				sys.error('\n' + (ex.stack || ex.message))
+				sys.puts('\n' + (ex.stack || ex.message))
 				responseObject = res.mkError(null, null, ex)
 			}
-			
+
 			// did the handler finish the response or take over responsibility?
 			if (res.finished || responseObject === false)
 				return;
-			
+
 			// format responseObject
 			var body = responseObject;
 			if (responseObject && responseObject.constructor !== String)
 				body = res.format(responseObject)
-			
+
 			// send and mark as finished
 			req.sendResponse(body)
 		})
 	})
+	server.debug = exports.debug
+	return server
 }
 
 /** Start a server listening on [port[, addr]] */
-function start(port, addr, silent) {
-	server = createServer(silent)
+function start(port, addr, verbose, debug) {
+	server = createServer()
+	server.verbose = (verbose === undefined || verbose) ? true : false
+	if (debug !== undefined)
+		server.debug = debug
 	port = port || 80
-	server.listen(port, addr)
-	silent || sys.puts('listening on '+(addr || '*')+':'+port)
+	server.listen(port, addr ? addr : undefined)
+	server.verbose && sys.puts('[oui] listening on '+(addr || '*')+':'+port)
 	return server
 }
 
@@ -372,18 +453,52 @@ function Route(path, handler) {
 	this.keys = []
 	this.path = path
 	this.handler = handler
-	
+
 	if (handler.routes === undefined)
 		handler.routes = [this]
 	else
 		handler.routes.push(this)
-	
-	if (path.constructor !== RegExp) {
-		this.path = new RegExp(('^'+path+'$').replace(/:[^/]*/g, '([^/]*)'))
+
+	// GET(['/users/([^/]+)/info', 'username'], ..
+	if (path.constructor === Array) {
+		var pat = path.shift()
+		this.path = (!path || pat.constructor !== RegExp) ? new RegExp('^'+pat+'$') : pat
+		this.keys = path
+	}
+	// GET('/users/:username/info', ..
+	else if (path.constructor !== RegExp) {
+		var nsrc = ('^'+path.replace(/:[^/]*/g, '([^/]*)')+'$')
+		exports.debug && sys.debug('[oui] route '+sys.inspect(path)+' compiled to '+sys.inspect(nsrc))
+		this.path = new RegExp(nsrc)
 		// this.path = this.path.compile()
 		var param_keys = path.match(/:[^/]*/g)
 		if (param_keys) for (var i=0; i < param_keys.length; i++)
 			this.keys.push(param_keys[i].replace(/^:/, ''))
+	}
+	// Pure RegExp
+	// GET(/\/users\/(<username>[^\/]+)\/info/', ..
+	// GET(/\/users\/([^/]+)\/info/, ..
+	else {
+		var src = path.source
+		var p = src.indexOf('<')
+		if (p !== -1 && src.indexOf('>', p+1) !== -1) {
+			var re = /\(<[^>]+>/;
+			var m = null
+			p--
+			var nsrc = src.substr(0, p)
+			src = src.substr(p)
+			while (m = re.exec(src)) {
+				nsrc += src.substring(0, m.index+1) // +1 for "("
+				var mlen = m[0].length
+				src = src.substr(m.index+mlen)
+				this.keys.push(m[0].substr(2,mlen-3))
+			}
+			if (src.length)
+				nsrc += src
+			// i is the only modifier which makes sense for path matching routes
+			path = new RegExp(nsrc, path.ignoreCase ? 'i' : undefined)
+		}
+		this.path = path
 	}
 }
 exports.Route = Route
@@ -430,9 +545,12 @@ exports.expose = function(methods, path, handler){
 
 /** Handler which takes care of requests for files */
 function staticFileHandler(params, req, res) {
+	server = this
+	if (typeof server.documentRoot !== 'string')
+		throw new Error('server.documentRoot is not set or is not a string')
 	relpath = req.url.pathname ? req.url.pathname.replace(/([\.]{2,}|^\/+|\/+$)/, '') : ''
-	abspath = mpath.join(exports.DOCUMENT_ROOT, relpath)
-	
+	abspath = mpath.join(server.documentRoot, relpath)
+
 	posix.stat(abspath).addCallback(function(stats) {
 		if (stats.isFile()) {
 			type = mimetype.lookup(mpath.extname(relpath))
@@ -442,13 +560,13 @@ function staticFileHandler(params, req, res) {
 		}
 		// todo: stats.isDirectory(), list...
 		else {
-			DEBUG && sys.puts('"'+relpath+'" is not a readable file. stats => '+JSON.stringify(stats))
+			server.debug && sys.debug('[oui] "'+relpath+'" is not a readable file. stats => '+JSON.stringify(stats))
 			res.sendError(404, 'Unable to handle file', '"'+relpath+'" is not a readable file')
 		}
 	}).addErrback(function() {
 		res.sendError(404, 'File not found', 'No file at '+req.url.raw, null)
 	})
-	
+
 	return false
 }
 exports.staticFileHandler = staticFileHandler
