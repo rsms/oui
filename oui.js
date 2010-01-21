@@ -178,8 +178,17 @@ http.IncomingMessage.prototype.__defineGetter__("filename", function(){
 })
 
 
-// response additions
-var _sendHeader = http.ServerResponse.prototype.sendHeader
+// outgoing msg additions
+var _http_OutgoingMessage_finish = http.OutgoingMessage.prototype.finish
+process.mixin(http.OutgoingMessage.prototype, {
+	finish: function() {
+		_http_OutgoingMessage_finish.call(this)
+		this.emit("finish")
+	}
+})
+
+// response additions (inherits from http.OutgoingMessage)
+var _http_ServerResponse_sendHeader = http.ServerResponse.prototype.sendHeader
 process.mixin(http.ServerResponse.prototype, {
 	prepare: function() {
 		this.headers = [
@@ -196,7 +205,7 @@ process.mixin(http.ServerResponse.prototype, {
 		statusCode = statusCode || this.status
 		headers = headers || this.headers
 		this.request.appendCookieHeaders(headers)
-		_sendHeader.apply(this, [statusCode, headers]);
+		_http_ServerResponse_sendHeader.apply(this, [statusCode, headers]);
 		if (this.request.connection.server.debug) {
 			var r = this.request
 			var s = '[oui] HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+
@@ -388,6 +397,13 @@ process.mixin(http.ServerResponse.prototype, {
 
 function createServer() {
 	server = http.createServer(function(req, res) {
+		if (this.debug) {
+			dateStarted = (new Date()).getTime()
+			res.addListener('finish', function(){
+				ms = ((new Date()).getTime() - dateStarted)
+				sys.debug('[oui] response finished (total time spent: '+ms+' ms)')
+			})
+		}
 		req.response = res
 		res.request = req
 
