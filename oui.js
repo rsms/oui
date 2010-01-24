@@ -197,7 +197,8 @@ process.mixin(http.ServerResponse.prototype, {
 		_http_ServerResponse_sendHeader.apply(this, [statusCode, headers]);
 		if (this.request.connection.server.debug) {
 			var r = this.request
-			var s = '[oui] HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+
+			var s = '[oui] <'+r.method+' '+r.path+'>'+
+				'\n  HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+
 				statusCode + ' ' + http.STATUS_CODES[statusCode]
 			for (var k in headers)
 				s += '\n  '+headers[k][0]+': '+headers[k][1]
@@ -381,7 +382,6 @@ process.mixin(http.ServerResponse.prototype, {
 
 			if (contentType)
 				res.headers.push(['Content-Type', contentType])
-			res.headers.push(['Content-Length', s.size])
 			res.headers.push(['Last-Modified', s.mtime.toUTCString()])
 			res.headers.push(['ETag', '"'+etag+'"'])
 
@@ -390,6 +390,20 @@ process.mixin(http.ServerResponse.prototype, {
 			if (match_status) {
 				met = res.request.method
 				res.status = (met === 'GET' || me === 'HEAD') ? match_status : 412
+				var shouldAddContentLength = true
+				for (var i=0;i<res.headers.length;i++) {
+					var kv = res.headers[i];
+					if (kv[0].toLowerCase() === 'content-length') {
+						res.headers[i] = ['Content-Length', 0]
+						shouldAddContentLength = false
+						break;
+					}
+				}
+				if (shouldAddContentLength)
+					res.headers.push(['Content-Length', 0])
+			}
+			else {
+				res.headers.push(['Content-Length', s.size])
 			}
 
 			// send headers
