@@ -824,6 +824,7 @@ exports.expose = function(methods, path, handler){
 function staticFileHandler(params, req, res) {
 	server = this
 	notfoundCb = function() {
+		server.debug && sys.debug('[oui] "'+req.filename+'" does not exist')
 		res.sendError(404, 'File not found', 'No file at '+req.url.raw, null)
 	}
 
