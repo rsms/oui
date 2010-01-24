@@ -25,14 +25,15 @@ mpath = require('path')
 RE_OUTER_DQUOTES = /^"+|"+$/g
 RE_COMMA_WS = /,\s*/
 
-exports.SERVER_NAME = 'oui/0.1 node/'+process.version
+// Enable debug mode (verbose async output to stdout)
 exports.debug = false
 
 var routes = {
 	GET: [],
 	POST: [],
 	PUT: [],
-	DELETE: []
+	DELETE: [],
+	OPTIONS: []
 }
 exports.routes = routes
 
@@ -98,9 +99,10 @@ process.mixin(http.IncomingMessage.prototype, {
 			return
 		for (var i=0, L = rv.length; i < L; i++){
 			var route = rv[i]
-			var matches = this.url.pathname.match(route.path)
+			var matches = route.path.exec(this.url.pathname)
 			if (matches) {
-				route.extractParams(this, matches)
+				if (Array.isArray(matches) && matches.length)
+					route.extractParams(this, matches)
 				return route
 			}
 		}
@@ -116,26 +118,6 @@ process.mixin(http.IncomingMessage.prototype, {
 		options.value = val
 		options.path = options.path || '/'
 		this.cookies[name] = options
-	},
-
-	appendCookieHeaders: function(headers) {
-		var ret, name, options
-		for (name in this.cookies) {
-			if (this.cookies[name].preset)
-				continue // don't re-set pre-set cookies yo
-			options = this.cookies[name]
-			ret = name + '=' + encodeURIComponent(options.value)
-			if (options.expires)
-				ret += '; expires=' + options.expires.toUTCString()
-			if (options.path)
-				ret += '; path=' + options.path
-			if (options.domain)
-				ret += '; domain=' + options.domain
-			if (options.secure)
-				ret += '; secure'
-			headers.push(['Set-Cookie', ret])
-		}
-		return headers
 	},
 
 	/** send response */
@@ -191,20 +173,27 @@ process.mixin(http.OutgoingMessage.prototype, {
 var _http_ServerResponse_sendHeader = http.ServerResponse.prototype.sendHeader
 process.mixin(http.ServerResponse.prototype, {
 	prepare: function() {
+		var server = this.request.connection.server
 		this.headers = [
-			['Server', exports.SERVER_NAME],
+			// Date is required by HTTP 1.1
 			['Date', (new Date()).toUTCString()]
 		]
+		if (server.name)
+			this.headers.push(['Server', server.name])
 		this.status = 200
 		this.encoding = 'utf-8'
 		this.type = 'text/html'
+		this.allowedOrigin = server.allowedOrigin
 	},
 
 	// monkey patch sendHeader so we can set some headers automatically
 	sendHeader: function(statusCode, headers) {
 		statusCode = statusCode || this.status
 		headers = headers || this.headers
-		this.request.appendCookieHeaders(headers)
+		if (this.request.cookies && this.request.cookies.length)
+			this.addCookieHeaders(headers)
+		if (this.allowedOrigin)
+			this.addACLHeaders(headers)
 		_http_ServerResponse_sendHeader.apply(this, [statusCode, headers]);
 		if (this.request.connection.server.debug) {
 			var r = this.request
@@ -216,6 +205,73 @@ process.mixin(http.ServerResponse.prototype, {
 		}
 		if (this.request.method === 'HEAD')
 			this.finish()
+	},
+
+	addCookieHeaders: function(headers) {
+		var ret, name, options, cookies = this.request.cookies
+		for (name in cookies) {
+			if (cookies[name].preset)
+				continue // don't re-set pre-set cookies yo
+			options = cookies[name]
+			ret = name + '=' + encodeURIComponent(options.value)
+			if (options.expires)
+				ret += '; expires=' + options.expires.toUTCString()
+			if (options.path)
+				ret += '; path=' + options.path
+			if (options.domain)
+				ret += '; domain=' + options.domain
+			if (options.secure)
+				ret += '; secure'
+			headers.push(['Set-Cookie', ret])
+		}
+		return headers
+	},
+	
+	/**
+	 * Construct and add CORS ACL headers to the response.
+	 *
+	 * Per http://www.w3.org/TR/cors/
+	 *
+	 * Returns undefined if the request did not contain a Origin header 
+	 *         or the response.allowedOrigin is empty.
+	 * Returns true if the origin was allowed and appropriate headers was set.
+	 * Returns false if the origin was not allowed (no headers set).
+	 */
+	addACLHeaders: function(headers) {
+		var reqHeaders = this.request.headers
+		var origin = reqHeaders['origin']
+		if (origin && this.allowedOrigin) {
+			// origin
+			var allowed = false
+			if (origin.indexOf('://') === -1) {
+				// Some browsers send "Origin: null" for localhost and file:// origins.
+				// Also, since the model is client trust-based, we can be forgiving.
+				allowed = true
+				headers.push(['Access-Control-Allow-Origin', '*'])
+			}
+			else {
+				if (this.allowedOrigin.test(origin)) {
+					headers.push(['Access-Control-Allow-Origin', origin])
+					allowed = true
+				}
+			}
+			
+			// ancillary headers
+			if (allowed) {
+				// todo: Access-Control-Allow-Credentials
+				var allowHeaders = reqHeaders['access-control-request-headers']
+				if (allowHeaders)
+					headers.push(['Access-Control-Allow-Headers', allowHeaders])
+				
+				var allowMethods = reqHeaders['access-control-allow-methods']
+				if (allowMethods)
+					headers.push(['Access-Control-Allow-Methods', allowMethods])
+				
+				// set max-age
+				headers.push(['Access-Control-Max-Age', '1728000'])
+			}
+			return allowed
+		}
 	},
 
 	format: function(obj) {
@@ -251,6 +307,15 @@ process.mixin(http.ServerResponse.prototype, {
 			e.message = String(message)
 		}
 		return {error: e}
+	},
+	
+	guard: function(promise, msgprefix) {
+		var res = this;
+		return promise.addErrback(function(error) {
+			msg = '' + (msgprefix || '') + error
+			sys.error(msg)
+			res.sendError(500, "Error", msg)
+		});
 	},
 
 	sendObject: function(responseObject) {
@@ -395,6 +460,18 @@ process.mixin(http.ServerResponse.prototype, {
 })
 
 
+/**
+ * Create a new OUI server.
+ *
+ * Optional properties:
+ *
+ *   .allowedOrigin = <RegExp> -- Allow origins for cross-site requests (CORS)
+ *     Example of allowing specific domains, including localhost:
+ *     .allowedOrigin = /^https?:\/\/(?:(?:.+\.|)(?:yourdomain|otherdomain)\.[^\.]+|localhost|.+\.local)$/
+ *
+ *   .documentRoot = <String> -- Document root for serving static files.
+ *
+ */
 function createServer() {
 	server = http.createServer(function(req, res) {
 		if (this.debug) {
@@ -425,7 +502,7 @@ function createServer() {
 		var route = req.findRoute()
 		if (route === undefined) {
 			res.status = 404
-			req.sendResponse('<h1>'+req.uri.path+' not found</h1>\n')
+			req.sendResponse('<h1>'+req.url.pathname+' not found</h1>\n')
 			return
 		}
 
@@ -454,7 +531,7 @@ function createServer() {
 			}
 			catch(ex) {
 				// format exception
-				sys.puts('\n' + (ex.stack || ex.message))
+				sys.puts('\nError: ' + (ex.stack || ex.message || ex))
 				responseObject = res.mkError(null, null, ex)
 			}
 
@@ -472,6 +549,9 @@ function createServer() {
 		})
 	})
 	server.debug = exports.debug
+	// Server name returned in responses. Please do not change this.
+	server.name = 'oui/0.1 node/'+process.version
+	server.allowedOrigin = /./; // any
 	return server
 }
 
@@ -492,6 +572,14 @@ exports.start = start
 
 
 /** Represents a route to handler by path */
+function FixedStringMatch(string, caseSensitive) {
+	this.string = caseSensitive ? string : string.toLowerCase();
+	this.caseSensitive = caseSensitive;
+}
+FixedStringMatch.prototype.exec = function(str) {
+	return this.caseSensitive ? (str === this.string) : (str.toLowerCase() === this.string);
+}
+
 function Route(path, handler) {
 	this.keys = []
 	this.path = path
@@ -512,14 +600,22 @@ function Route(path, handler) {
 	}
 	// GET('/users/:username/info', ..
 	else if (path.constructor !== RegExp) {
-		var nsrc = path.replace(/:[^/]*/g, '([^/]*)')
-		nsrc = '^'+nsrc+'$'
-		exports.debug && sys.debug(
-			'[oui] route '+sys.inspect(path)+' compiled to '+sys.inspect(nsrc))
-		this.path = new RegExp(nsrc)
-		var param_keys = path.match(/:[^/]*/g)
-		if (param_keys) for (var i=0; i < param_keys.length; i++)
-			this.keys.push(param_keys[i].replace(/^:/, ''))
+		path = String(path);
+		if (path.indexOf(':') === -1) {
+			this.path = new FixedStringMatch(path)
+			exports.debug && sys.debug(
+				'[oui] route '+sys.inspect(path)+' treaded as absolute fixed-string match')
+		}
+		else {
+			var nsrc = path.replace(/:[^/]*/g, '([^/]*)')
+			nsrc = '^'+nsrc+'$'
+			exports.debug && sys.debug(
+				'[oui] route '+sys.inspect(path)+' compiled to '+sys.inspect(nsrc))
+			this.path = new RegExp(nsrc, 'i') // case-insensitive by default
+			var param_keys = path.match(/:[^/]*/g)
+			if (param_keys) for (var i=0; i < param_keys.length; i++)
+				this.keys.push(param_keys[i].replace(/^:/, ''))
+		}
 	}
 	// Pure RegExp
 	// GET(/^\/users\/(<username>[^\/]+)\/info$/', ..
@@ -542,9 +638,11 @@ function Route(path, handler) {
 			if (src.length)
 				nsrc += src
 			// i is the only modifier which makes sense for path matching routes
-			path = new RegExp(nsrc, path.ignoreCase ? 'i' : undefined)
+			this.path = new RegExp(nsrc, path.ignoreCase ? 'i' : undefined)
 		}
-		this.path = path
+		else {
+			this.path = path
+		}
 	}
 }
 exports.Route = Route
@@ -694,6 +792,11 @@ GLOBAL.DELETE = function(path, handler){
 	routes.DELETE.push(new Route(path, handler))
 	return handler
 }
+/** Expose handler on path for DELETE */
+GLOBAL.OPTIONS = function(path, handler){
+	routes.OPTIONS.push(new Route(path, handler))
+	return handler
+}
 
 /** Expose handler on path for multiple methods */
 exports.expose = function(methods, path, handler){
@@ -723,10 +826,10 @@ function staticFileHandler(params, req, res) {
 		}
 		// todo: stats.isDirectory(), list... (enabled should be configurable)
 		else {
-			server.debug && sys.debug('[oui] "'+relpath+'" is not a readable file.'+
+			server.debug && sys.debug('[oui] "'+req.url.pathname+'" is not a readable file.'+
 				' stats => '+JSON.stringify(stats))
 			res.sendError(404, 'Unable to handle file',
-				sys.inspect(relpath)+' is not a readable file')
+				sys.inspect(req.url.pathname)+' is not a readable file')
 		}
 	}).addErrback(notfoundCb)
 
