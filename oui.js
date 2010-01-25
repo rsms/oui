@@ -831,7 +831,7 @@ function staticFileHandler(params, req, res) {
 
 	if (!req.filename) {
 		notfoundCb()
-		return false
+		return;
 	}
 
 	posix.stat(req.filename).addCallback(function(stats) {
@@ -867,10 +867,8 @@ function staticFileHandler(params, req, res) {
 				sys.inspect(req.url.pathname)+' is not a readable file')
 		}
 	}).addErrback(notfoundCb)
-
-	return false
 }
 exports.staticFileHandler = staticFileHandler
 
 // Shorthand empty handler
-exports.noopHandler = function(){ return true; }
+exports.noopHandler = function(){ return false; }
