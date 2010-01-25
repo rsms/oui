@@ -620,7 +620,7 @@ function Route(pat, handler) {
 		if (pat.indexOf(':') === -1) {
 			this.path = new FixedStringMatch(pat)
 			exports.debug && sys.debug(
-				'[oui] route '+sys.inspect(pat)+' treaded as absolute fixed-string match')
+				'[oui] route '+sys.inspect(pat)+' treated as absolute fixed-string match')
 		}
 		else {
 			var nsrc = pat.replace(/:[^/]*/g, '([^/]*)')
