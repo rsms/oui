@@ -54,17 +54,12 @@ process.mixin(http.IncomingMessage.prototype, {
 		for (var k in m) this.params[k] = m[k]
 	},
 
-	extractFormParams: function(chunk) {
-		if (chunk === undefined)
-			return;
-		var params = querystring.parse(chunk)
-		for (var k in params)
-			this.params[k] = params[k];
-	},
+	// Returns true on success, otherwise a response has been sent.
+	parse: function() {
+		var self = this, server = this.connection.server;
 
-	processHeaders: function() {
+		// cookies
 		this.cookies = {}
-		var self = this
 		var s = this.headers['cookie']
 		if (s) {
 			s.split(/; */).forEach(function(cookie){
@@ -76,9 +71,74 @@ process.mixin(http.IncomingMessage.prototype, {
 				}
 			})
 		}
+
+		// content
+		this.contentType = this.headers['content-type']
+		this.contentLength = parseInt(this.headers['content-length'] || 0)
+		if (this.contentLength < 1)
+			return this.response.sendError(411, 'Length Required');
+		// state: if a request's content was buffered, .content is set.
+		if (this.connection.server.bufferableRequestTypes.indexOf(this.contentType) !== -1) {
+			var send413 = function(){
+				self.response.sendError(413, "Request Entity Too Large", "Maximum size is "+
+					server.maxRequestBodySize.toString())
+			};
+			this.content = ''
+			if (this.contentLength > 0) {
+				// limited buffer
+				if (typeof server.maxRequestBodySize === 'number') {
+					if (this.contentLength > server.maxRequestBodySize) {
+						return send413();
+					}
+					else {
+						var fillcb;fillcb = function(chunk) {
+							var z = this.content.length+chunk.length;
+							if (z > server.maxRequestBodySize) {
+								this.content += chunk.substr(0, server.maxRequestBodySize - z);
+								this.removeListener('body', fillcb);
+								// clipped the input, which is a good thing
+								if (!this.started)
+									send413();
+							}
+							else {
+								this.content += chunk;
+							}
+						}
+						this.addListener('body', fillcb);
+					}
+				}
+				else {
+					// unlimited buffer -- might be dangerous
+					this.addListener('body', function(chunk) {this.content += chunk })
+				}
+			}
+		}
+		// todo: handle other kind of content, like file uploads and arbitrary data.
+		return true;
 	},
 
-	findRoute: function() {
+	addURIEncodedDataToParams: function(data) {
+		var params = querystring.parse(data)
+		for (var k in params)
+			this.params[k] = params[k];
+	},
+
+	addJSONDataToParams: function(data) {
+		var obj;
+		try {
+			obj = JSON.parse(data);
+		}
+		catch (exc) {
+			return this.response.sendError(400, 'Bad JSON', exc.message)
+		}
+		if (typeof obj !== 'object') {
+			return this.response.sendError(400, 'Bad JSON', 'Root object must be a list or a dict')
+		}
+		for (var k in obj)
+			this.params[k] = obj[k];
+	},
+
+	solveRoute: function() {
 		var rv = routes[(this.method === 'HEAD') ? 'GET' : this.method];
 		if (rv === undefined)
 			return
@@ -88,6 +148,7 @@ process.mixin(http.IncomingMessage.prototype, {
 			if (matches) {
 				if (Array.isArray(matches) && matches.length)
 					route.extractParams(this, matches)
+				this.route = route
 				return route
 			}
 		}
@@ -199,6 +260,7 @@ process.mixin(http.ServerResponse.prototype, {
 				s += '\n  '+headers[k][0]+': '+headers[k][1]
 			sys.debug(s)
 		}
+		this.started = true
 		if (this.request.method === 'HEAD')
 			this.finish()
 	},
@@ -222,13 +284,13 @@ process.mixin(http.ServerResponse.prototype, {
 		}
 		return headers
 	},
-	
+
 	/**
 	 * Construct and add CORS ACL headers to the response.
 	 *
 	 * Per http://www.w3.org/TR/cors/
 	 *
-	 * Returns undefined if the request did not contain a Origin header 
+	 * Returns undefined if the request did not contain a Origin header
 	 *         or the response.allowedOrigin is empty.
 	 * Returns true if the origin was allowed and appropriate headers was set.
 	 * Returns false if the origin was not allowed (no headers set).
@@ -251,18 +313,18 @@ process.mixin(http.ServerResponse.prototype, {
 					allowed = true
 				}
 			}
-			
+
 			// ancillary headers
 			if (allowed) {
 				// todo: Access-Control-Allow-Credentials
 				var allowHeaders = reqHeaders['access-control-request-headers']
 				if (allowHeaders)
 					headers.push(['Access-Control-Allow-Headers', allowHeaders])
-				
+
 				var allowMethod = reqHeaders['access-control-request-method']
 				if (allowMethod)
 					headers.push(['Access-Control-Allow-Methods', allowMethod])
-				
+
 				// we do not keep state, so please do not rely on results
 				headers.push(['Access-Control-Max-Age', '0'])
 			}
@@ -288,8 +350,14 @@ process.mixin(http.ServerResponse.prototype, {
 	 * }}
 	 */
 	mkError: function(status, title, message, exception) {
-		this.status = parseInt(status) || 500
-		e = {title: String(title || 'Internal Server Error')}
+		if (typeof status === 'object' && status.stack !== undefined) {
+			exception = status
+			this.status = 500
+		}
+		else {
+			this.status = parseInt(status) || 500
+		}
+		e = {title: String(title || 'Error')}
 		if (exception) {
 			e.message = message ? String(message)+' ' : ''
 			if (exception.message)
@@ -304,14 +372,21 @@ process.mixin(http.ServerResponse.prototype, {
 		}
 		return {error: e}
 	},
-	
-	guard: function(promise, msgprefix) {
+
+	guard: function(promise, msg) {
 		var res = this;
 		return promise.addErrback(function(error) {
-			msg = '' + (msgprefix || '') + error
-			sys.error(msg)
-			res.sendError(500, "Error", msg)
+			res.sendError(null, null, msg || '', error)
 		});
+	},
+
+	tryGuard: function(fun, msg) {
+		try {
+			fun()
+		}
+		catch(exc) {
+			return res.sendError(null, null, msg || '', exc)
+		}
 	},
 
 	sendData: function(body) {
@@ -320,14 +395,14 @@ process.mixin(http.ServerResponse.prototype, {
 
 	sendObject: function(responseObject) {
 		var body = this.format(responseObject)
-		this.sendData(body)
+		this.request.sendResponse(body)
 	},
 
 	sendError: function(status, title, message, exception) {
-		responseObject = this.mkError(status, title, message, exception)
+		var obj = this.mkError(status, title, message, exception)
 		this.request.connection.server.debug && sys.debug(
-			'[oui] sendError '+sys.inspect(responseObject.error))
-		this.sendObject(responseObject)
+			'[oui] sendError '+sys.inspect(obj.error))
+		this.sendObject(obj)
 	},
 
 	doesMatchRequestPredicates: function(etag, mtime) {
@@ -476,98 +551,147 @@ process.mixin(http.ServerResponse.prototype, {
 })
 
 
+function requestCompleteHandler(req, res) {
+	try {
+		// only proceed if the response have not yet started
+		if (res.started)
+			return;
+
+		// load form request
+		if (req.content) {
+			if (req.contentType === 'application/x-www-form-urlencoded')
+				req.addURIEncodedDataToParams(req.content)
+			else if (req.contentType === 'application/json')
+				req.addJSONDataToParams(req.content)
+		}
+
+		// did the response start already?
+		if (res.started)
+			return;
+
+		// let route handler act on req and res, possibly returning body struct
+		var body = req.route.handler.apply(server, [req.params, req, res])
+
+		// did the handler finish the response or take over responsibility?
+		if (body === undefined || res.started)
+			return;
+
+		// format response object
+		if (body && body.constructor !== String)
+			body = res.format(body)
+
+		// send and mark as finished
+		req.sendResponse(body)
+	}
+	catch(exc) {
+		return res.sendError(exc)
+	}
+}
+
+
+function requestHandler(req, res) {
+	if (this.debug) {
+		dateStarted = (new Date()).getTime()
+		res.addListener('finish', function(){
+			ms = ((new Date()).getTime() - dateStarted)
+			sys.debug('[oui] response finished (total time spent: '+ms+' ms)')
+		})
+	}
+	req.response = res
+	res.request = req
+
+	req.prepare()
+	res.prepare()
+
+	// log request
+	if (this.debug) {
+		var s = '[oui] <-- '+req.method+' '+req.path
+		for (var k in req.headers)
+			s += '\n  '+k+': '+req.headers[k]
+		sys.debug(s)
+	}
+	else if (this.verbose) {
+		sys.puts('[oui] '+req.method+' '+req.path)
+	}
+
+	try {
+		// solve route
+		if (!req.solveRoute())
+			return res.sendError(404, req.path+' not found')
+
+		// parse the request (process header, cookies, register body buffer collectors, etc)
+		if (!req.parse())
+			return;
+
+		// take action when request is completely received
+		req.addListener('complete', function(){ requestCompleteHandler(req, res) });
+	}
+	catch(exc) {
+		return res.sendError(exc)
+	}
+}
+
 /**
  * Create a new OUI server.
  *
- * Optional properties:
+ * Server properties:
  *
- *   .allowedOrigin = <RegExp> -- Allow origins for cross-site requests (CORS)
- *     Example of allowing specific domains, including localhost:
- *     .allowedOrigin = /^https?:\/\/(?:(?:.+\.|)(?:yourdomain|otherdomain)\.[^\.]+|localhost|.+\.local)$/
+ *   .verbose = bool
+ *      If true, send limited logging to stdout. Basically, just print a line
+ *      each time a request is received containing the method and the path
+ *      requested. Uses asynchronous I/O (in contrast to .debug). True by default.
  *
- *   .documentRoot = <String> -- Document root for serving static files.
+ *   .debug = bool
+ *      If true, send excessive logging to stderr through sys.debug and sys.p.
+ *      This should NOT BE ENABLED for production sites as the logging I/O is
+ *      blocking and thus introduces a considerable performance penalty.
+ *      By default, a new server instance's debug property has the same value
+ *      as the module-wide property of the same name.
  *
- *   .indexFilenames = <Array of <String>s> -- File to look for when requesting a directory.
+ *   .allowedOrigin = <RegExp>
+ *      Allow origins for cross-site requests (CORS)
+ *      Example of allowing specific domains, including localhost:
+ *      .allowedOrigin = /^https?:\/\/(?:(?:.+\.|)(?:yourdomain|otherdomain)\.[^\.]+|localhost|.+\.local)$/
+ *
+ *   .documentRoot = <String>
+ *      Document root for serving static files.
+ *
+ *   .indexFilenames = <Array of <String>s>
+ *      File to look for when requesting a directory.
+ *
+ *   .bufferableRequestTypes = <Array of <String>s>
+ *      List of MIME types which denote "bufferable" request content payloads,
+ *      that is; if a request is received with content and the value of a
+ *      content-type header equals one of the strings in this list, the content
+ *      entity of the request will be automatically read into a buffer. This
+ *      buffer (a String) is later accessible from request.content.
+ *
+ *   .maxRequestBodySize = int
+ *      When oui handled reading of request content entities, this limits the
+ *      number of bytes which will be read. Important to keep this to a relatively
+ *      low number to prevent DoS attacks.
  *
  */
 function createServer() {
-	server = http.createServer(function(req, res) {
-		if (this.debug) {
-			dateStarted = (new Date()).getTime()
-			res.addListener('finish', function(){
-				ms = ((new Date()).getTime() - dateStarted)
-				sys.debug('[oui] response finished (total time spent: '+ms+' ms)')
-			})
-		}
-		req.response = res
-		res.request = req
+	var server = http.createServer(requestHandler)
 
-		req.prepare()
-		res.prepare()
-
-		// log request
-		if (this.debug) {
-			var s = '[oui] <-- '+req.method+' '+req.path
-			for (var k in req.headers)
-				s += '\n  '+k+': '+req.headers[k]
-			sys.debug(s)
-		}
-		else if (this.verbose) {
-			sys.puts('[oui] '+req.method+' '+req.path)
-		}
-
-		// solve route
-		var route = req.findRoute()
-		if (route === undefined) {
-			res.status = 404
-			req.sendResponse('<h1>'+req.url.pathname+' not found</h1>\n')
-			return
-		}
-
-		// process headers (cookies etc)
-		req.processHeaders()
-
-		// extract url-encoded body parts into req
-		if (req.headers['content-type'] === 'application/x-www-form-urlencoded')
-			req.addListener('body', req.extractFormParams)
-		// todo: handle other kinds of payloads, like file uploads and arbitrary
-		//       data.
-		// todo: when form data, buffer up and parse on "complete".
-
-		// Q: Will request:"complete" be emitted even if there is data still to
-		//    be read?
-
-		// take action when request is completely received
-		req.addListener('complete', function(){
-			// call route, if any
-			var responseObject = null
-			try {
-				// let handler act on req and res, possibly returning body struct
-				responseObject = route.handler.apply(server, [req.params, req, res])
-			}
-			catch(ex) {
-				// format exception
-				sys.puts('\nError: ' + (ex.stack || ex.message || ex))
-				responseObject = res.mkError(null, null, ex)
-			}
-
-			// did the handler finish the response or take over responsibility?
-			if (responseObject === undefined || res.finished)
-				return
-
-			// format responseObject
-			var body = responseObject;
-			if (responseObject && responseObject.constructor !== String)
-				body = res.format(responseObject)
-
-			// send and mark as finished
-			req.sendResponse(body)
-		})
-	})
+	// Inherit debug property from module-wide property
 	server.debug = exports.debug
+
 	// Server name returned in responses. Please do not change this.
 	server.name = 'oui/0.1 node/'+process.version
-	server.allowedOrigin = /./; // any
+
+	// Allow any origin by default
+	server.allowedOrigin = /./;
+
+	// List of request content types we will buffer
+	server.bufferableRequestTypes = [
+		'application/x-www-form-urlencoded',
+		'application/json']
+
+	// Limit the size of a request body
+	server.maxRequestBodySize = 1024*1024*2; // 2 MB
+
 	return server
 }
 
