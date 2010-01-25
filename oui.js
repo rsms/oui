@@ -56,7 +56,7 @@ process.mixin(http.IncomingMessage.prototype, {
 
 	// Returns true on success, otherwise a response has been sent.
 	parse: function() {
-		var self = this, server = this.connection.server;
+		var self = this;
 
 		// cookies
 		this.cookies = {}
@@ -75,12 +75,20 @@ process.mixin(http.IncomingMessage.prototype, {
 		// content
 		this.contentType = this.headers['content-type']
 		this.contentLength = parseInt(this.headers['content-length'] || 0)
+		if (this.method === 'POST' || this.method === 'PUT')
+			this.parseRequestEntity()
+		return true;
+	},
+
+	parseRequestEntity: function() {
+		// todo: handle other kind of content, like file uploads and arbitrary data.
+		var server = this.connection.server, res = this.response;
 		if (this.contentLength < 1)
-			return this.response.sendError(411, 'Length Required');
+			return res.sendError(411, 'Length Required');
 		// state: if a request's content was buffered, .content is set.
-		if (this.connection.server.bufferableRequestTypes.indexOf(this.contentType) !== -1) {
+		if (server.bufferableRequestTypes.indexOf(this.contentType) !== -1) {
 			var send413 = function(){
-				self.response.sendError(413, "Request Entity Too Large", "Maximum size is "+
+				res.sendError(413, "Request Entity Too Large", "Maximum size is "+
 					server.maxRequestBodySize.toString())
 			};
 			this.content = ''
@@ -113,8 +121,6 @@ process.mixin(http.IncomingMessage.prototype, {
 				}
 			}
 		}
-		// todo: handle other kind of content, like file uploads and arbitrary data.
-		return true;
 	},
 
 	addURIEncodedDataToParams: function(data) {
