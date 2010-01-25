@@ -20,10 +20,14 @@ sys = require('sys')
 posix = require('posix')
 url = require("url")
 querystring = require("querystring")
-mpath = require('path')
+path = require('path')
 
 RE_OUTER_DQUOTES = /^"+|"+$/g
 RE_COMMA_WS = /,\s*/
+BODYLESS_STATUSES = [204,205,304] // HTTP statuses without body
+
+// Shorthand empty function, primarily for req handles
+exports.NOOP = function(){}
 
 // Enable debug mode (verbose async output to stdout)
 exports.debug = false
@@ -51,22 +55,6 @@ process.mixin(http.IncomingMessage.prototype, {
 		// copy, not assign, query -> params
 		var m = this.url.query
 		for (var k in m) this.params[k] = m[k]
-		// exc handler -- WIP, currently broken
-		/*sys.puts('ADD')
-		var path = this.path;
-		var self = this
-		var finish = function() {
-			self.finish()
-		}
-		var eh = function(e) {
-			sys.error('error while handling request '+path)
-			finish()
-		}
-		process.addListener('uncaughtException', eh)
-		this.addListener('response', function() {
-			sys.puts('REMOVE')
-			process.removeListener('uncaughtException', eh)
-		})*/
 	},
 
 	extractFormParams: function(chunk) {
@@ -125,20 +113,27 @@ process.mixin(http.IncomingMessage.prototype, {
 		var res = this.response
 		if (res.finished)
 			return
-		if (typeof body === 'string') {
+		if (res.status)
+			res.status = parseInt(res.status)
+		if (res.type !== undefined) {
+			var contentType = res.type
+			if (res.encoding !== undefined && contentType.indexOf('text/') === 0)
+				contentType += '; charset='+res.encoding
+			res.headers.push(['Content-Type', contentType])
+		}
+		var bodyless = BODYLESS_STATUSES.indexOf(res.status) !== -1;
+		if (typeof body === 'string' && !bodyless) {
 			res.headers.push(['Content-Length', body.length])
-			if (res.type !== undefined) {
-				var contentType = res.type
-				if (res.encoding !== undefined && contentType.indexOf('text/') === 0)
-					contentType += '; charset='+res.encoding
-				res.headers.push(['Content-Type', contentType])
-			}
 			res.sendHeader()
 			if (res.finished) // sendHeader might have finished the response
 				return;
-			res.sendBody(body, res.encoding)
+			// HEAD responses must not include an entity
+			if (!(res.status === 200 && this.method === 'HEAD'))
+				res.sendBody(body, res.encoding)
 		}
 		else {
+			if (!bodyless)
+				res.headers.push(['Content-Length', '0'])
 			res.sendHeader()
 		}
 		res.finish()
@@ -152,12 +147,15 @@ http.IncomingMessage.prototype.__defineGetter__("filename", function(){
 	server = this.connection.server
 	if (typeof server.documentRoot !== 'string')
 		return this._filename = null
-	abspath = mpath.join(server.documentRoot, this.url.pathname || '')
-	abspath = mpath.normalize(abspath) // /x/y/../z --> /x/z
+	abspath = path.join(server.documentRoot, this.url.pathname || '')
+	abspath = path.normalize(abspath) // /x/y/../z --> /x/z
 	if (abspath.substr(0, server.documentRoot.length) === server.documentRoot)
 		return this._filename = abspath
 	return this._filename = null
-})
+});
+http.IncomingMessage.prototype.__defineSetter__("filename", function(v) {
+	this._filename = String(v);
+});
 
 
 // outgoing msg additions
@@ -182,7 +180,7 @@ process.mixin(http.ServerResponse.prototype, {
 			this.headers.push(['Server', server.name])
 		this.status = 200
 		this.encoding = 'utf-8'
-		this.type = 'text/html'
+		//this.type = 'text/html'
 		this.allowedOrigin = server.allowedOrigin
 	},
 
@@ -197,7 +195,7 @@ process.mixin(http.ServerResponse.prototype, {
 		_http_ServerResponse_sendHeader.apply(this, [statusCode, headers]);
 		if (this.request.connection.server.debug) {
 			var r = this.request
-			var s = '[oui] <'+r.method+' '+r.path+'>'+
+			var s = '[oui] --> '+r.method+' '+r.path+
 				'\n  HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+
 				statusCode + ' ' + http.STATUS_CODES[statusCode]
 			for (var k in headers)
@@ -264,12 +262,12 @@ process.mixin(http.ServerResponse.prototype, {
 				if (allowHeaders)
 					headers.push(['Access-Control-Allow-Headers', allowHeaders])
 				
-				var allowMethods = reqHeaders['access-control-allow-methods']
-				if (allowMethods)
-					headers.push(['Access-Control-Allow-Methods', allowMethods])
+				var allowMethod = reqHeaders['access-control-request-method']
+				if (allowMethod)
+					headers.push(['Access-Control-Allow-Methods', allowMethod])
 				
-				// set max-age
-				headers.push(['Access-Control-Max-Age', '1728000'])
+				// we do not keep state, so please do not rely on results
+				headers.push(['Access-Control-Max-Age', '0'])
 			}
 			return allowed
 		}
@@ -319,13 +317,19 @@ process.mixin(http.ServerResponse.prototype, {
 		});
 	},
 
+	sendData: function(body) {
+		this.request.sendResponse(body)
+	},
+
 	sendObject: function(responseObject) {
 		body = this.format(responseObject)
-		this.request.sendResponse(body)
+		this.sendData(body)
 	},
 
 	sendError: function(status, title, message, exception) {
 		responseObject = this.mkError(status, title, message, exception)
+		this.request.connection.server.debug && sys.debug(
+			'[oui] sendError '+sys.inspect(responseObject.error))
 		this.sendObject(responseObject)
 	},
 
@@ -366,8 +370,8 @@ process.mixin(http.ServerResponse.prototype, {
 		return false
 	},
 
-	sendFile: function(path, contentType, stats, successCb) {
-		if (!path || path.constructor !== String)
+	sendFile: function(abspath, contentType, stats, successCb) {
+		if (!abspath || abspath.constructor !== String)
 			throw 'first argument must be a string'
 		var promise = new process.Promise();
 		// we need to set successCb here as a pre-stat'ed file in combo with
@@ -380,8 +384,9 @@ process.mixin(http.ServerResponse.prototype, {
 		var statsCb = function (s) {
 			var etag = stat2etag(s)
 
-			if (contentType)
-				res.headers.push(['Content-Type', contentType])
+			if (!contentType)
+				contentType = mimetype.lookup(path.extname(abspath)) || 'application/octet-stream'
+			res.headers.push(['Content-Type', contentType])
 			res.headers.push(['Last-Modified', s.mtime.toUTCString()])
 			res.headers.push(['ETag', '"'+etag+'"'])
 
@@ -394,13 +399,13 @@ process.mixin(http.ServerResponse.prototype, {
 				for (var i=0;i<res.headers.length;i++) {
 					var kv = res.headers[i];
 					if (kv[0].toLowerCase() === 'content-length') {
-						res.headers[i] = ['Content-Length', 0]
+						res.headers[i][1] = '0'
 						shouldAddContentLength = false
 						break;
 					}
 				}
 				if (shouldAddContentLength)
-					res.headers.push(['Content-Length', 0])
+					res.headers.push(['Content-Length', '0'])
 			}
 			else {
 				res.headers.push(['Content-Length', s.size])
@@ -418,7 +423,7 @@ process.mixin(http.ServerResponse.prototype, {
 
 			// forward
 			var enc = 'binary', rz = 16*1024
-			posix.open(path, process.O_RDONLY, 0666).addCallback(function(fd) {
+			posix.open(abspath, process.O_RDONLY, 0666).addCallback(function(fd) {
 				var pos = 0;
 				function readChunk () {
 					posix.read(fd, rz, pos, enc).addCallback(function(chunk, bytes_read) {
@@ -446,7 +451,7 @@ process.mixin(http.ServerResponse.prototype, {
 
 		// top level error handler
 		promise.addErrback(function (error) {
-			sys.error('sendFile failed for "'+path+'"')
+			sys.error('sendFile failed for "'+abspath+'"')
 			if (!res.finished) {
 				// Since response has not begun, send a pretty error message
 				res.sendError(500, "I/O error", error)
@@ -463,9 +468,9 @@ process.mixin(http.ServerResponse.prototype, {
 		}
 		else {
 			// perform stat
-			posix.stat(path).addCallback(statsCb).addErrback(function (error) {
-				sys.puts('[oui] warn: failed to read '+sys.inspect(path)+'. '+error)
-				res.sendError(404, 'File not found', 'No file at "'+path+'"')
+			posix.stat(abspath).addCallback(statsCb).addErrback(function (error) {
+				sys.puts('[oui] warn: failed to read '+sys.inspect(abspath)+'. '+error)
+				res.sendError(404, 'File not found', 'No file at "'+abspath+'"')
 			});
 		}
 
@@ -485,6 +490,8 @@ process.mixin(http.ServerResponse.prototype, {
  *
  *   .documentRoot = <String> -- Document root for serving static files.
  *
+ *   .indexFilenames = <Array of <String>s> -- File to look for when requesting a directory.
+ *
  */
 function createServer() {
 	server = http.createServer(function(req, res) {
@@ -503,7 +510,7 @@ function createServer() {
 
 		// log request
 		if (this.debug) {
-			var s = '[oui] '+req.method+' '+req.path
+			var s = '[oui] <-- '+req.method+' '+req.path
 			for (var k in req.headers)
 				s += '\n  '+k+': '+req.headers[k]
 			sys.debug(s)
@@ -534,9 +541,6 @@ function createServer() {
 
 		// take action when request is completely received
 		req.addListener('complete', function(){
-			server.debug && sys.debug('[oui] request '+req.method+' '+req.path+
-				' completed -- creating response')
-
 			// call route, if any
 			var responseObject = null
 			try {
@@ -594,9 +598,9 @@ FixedStringMatch.prototype.exec = function(str) {
 	return this.caseSensitive ? (str === this.string) : (str.toLowerCase() === this.string);
 }
 
-function Route(path, handler) {
+function Route(pat, handler) {
 	this.keys = []
-	this.path = path
+	this.path = pat
 	this.handler = handler
 
 	if (handler.routes === undefined)
@@ -605,28 +609,28 @@ function Route(path, handler) {
 		handler.routes.push(this)
 
 	// GET(['/users/([^/]+)/info', 'username'], ..
-	if (Array.isArray(path)) {
-		re = path.shift()
+	if (Array.isArray(pat)) {
+		re = pat.shift()
 		if (!re || re.constructor !== RegExp)
 			re = new RegExp('^'+re+'$')
 		this.path = re
-		this.keys = path
+		this.keys = pat
 	}
 	// GET('/users/:username/info', ..
-	else if (path.constructor !== RegExp) {
-		path = String(path);
-		if (path.indexOf(':') === -1) {
-			this.path = new FixedStringMatch(path)
+	else if (pat.constructor !== RegExp) {
+		pat = String(pat);
+		if (pat.indexOf(':') === -1) {
+			this.path = new FixedStringMatch(pat)
 			exports.debug && sys.debug(
-				'[oui] route '+sys.inspect(path)+' treaded as absolute fixed-string match')
+				'[oui] route '+sys.inspect(pat)+' treaded as absolute fixed-string match')
 		}
 		else {
-			var nsrc = path.replace(/:[^/]*/g, '([^/]*)')
+			var nsrc = pat.replace(/:[^/]*/g, '([^/]*)')
 			nsrc = '^'+nsrc+'$'
 			exports.debug && sys.debug(
-				'[oui] route '+sys.inspect(path)+' compiled to '+sys.inspect(nsrc))
+				'[oui] route '+sys.inspect(pat)+' compiled to '+sys.inspect(nsrc))
 			this.path = new RegExp(nsrc, 'i') // case-insensitive by default
-			var param_keys = path.match(/:[^/]*/g)
+			var param_keys = pat.match(/:[^/]*/g)
 			if (param_keys) for (var i=0; i < param_keys.length; i++)
 				this.keys.push(param_keys[i].replace(/^:/, ''))
 		}
@@ -635,7 +639,7 @@ function Route(path, handler) {
 	// GET(/^\/users\/(<username>[^\/]+)\/info$/', ..
 	// GET(/^\/users\/([^/]+)\/info$/, ..
 	else {
-		var src = path.source
+		var src = pat.source
 		var p = src.indexOf('<')
 		if (p !== -1 && src.indexOf('>', p+1) !== -1) {
 			var re = /\(<[^>]+>/;
@@ -652,10 +656,10 @@ function Route(path, handler) {
 			if (src.length)
 				nsrc += src
 			// i is the only modifier which makes sense for path matching routes
-			this.path = new RegExp(nsrc, path.ignoreCase ? 'i' : undefined)
+			this.path = new RegExp(nsrc, pat.ignoreCase ? 'i' : undefined)
 		}
 		else {
-			this.path = path
+			this.path = pat
 		}
 	}
 }
@@ -727,14 +731,14 @@ exports.mimetype = mimetype = {
 	_parseSystemTypes: function(paths) {
 		promise = new process.Promise()
 		var next = function(){
-			path = paths.shift()
-			if (!path) {
+			var abspath = paths.shift()
+			if (!abspath) {
 				promise.emitError()
 				return
 			}
-			posix.cat(path).addCallback(function (content) {
+			posix.cat(abspath).addCallback(function (content) {
 				mimetype.parse(content)
-				promise.emitSuccess(path)
+				promise.emitSuccess(abspath)
 			}).addErrback(function(){
 				next()
 			});
@@ -822,10 +826,10 @@ exports.expose = function(methods, path, handler){
 
 /** Handler which takes care of requests for files */
 function staticFileHandler(params, req, res) {
-	server = this
-	notfoundCb = function() {
+	var server = this
+	var notfoundCb = function() {
 		server.debug && sys.debug('[oui] "'+req.filename+'" does not exist')
-		res.sendError(404, 'File not found', 'No file at '+req.url.raw, null)
+		res.sendError(404, 'File not found', 'Nothing found at '+req.path, null)
 	}
 
 	if (!req.filename) {
@@ -835,11 +839,30 @@ function staticFileHandler(params, req, res) {
 
 	posix.stat(req.filename).addCallback(function(stats) {
 		if (stats.isFile()) {
-			type = mimetype.lookup(mpath.extname(req.url.pathname))
-				|| 'application/octet-stream'
-			res.sendFile(req.filename, type, stats)
+			res.sendFile(req.filename, null, stats)
 		}
-		// todo: stats.isDirectory(), list... (enabled should be configurable)
+		else if (server.indexFilenames && stats.isDirectory()) {
+			server.debug && sys.debug(
+				'[oui] trying server.indexFilenames for directory '+req.filename)
+			var _indexFilenameIndex = 0;
+			var tryNextIndexFilename = function() {
+				var name = server.indexFilenames[_indexFilenameIndex++];
+				if (!name) {
+					sys.debug('indexFilenames END')
+					notfoundCb();
+					return;
+				}
+				var filename = path.join(req.filename, name);
+				sys.debug('try '+filename)
+				posix.stat(filename).addCallback(function(stats2) {
+					if (stats2.isFile())
+						res.sendFile(filename, null, stats2)
+					else
+						tryNextIndexFilename();
+				}).addErrback(tryNextIndexFilename);
+			}
+			tryNextIndexFilename();
+		}
 		else {
 			server.debug && sys.debug('[oui] "'+req.url.pathname+'" is not a readable file.'+
 				' stats => '+JSON.stringify(stats))
