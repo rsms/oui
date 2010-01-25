@@ -532,6 +532,7 @@ function createServer() {
 			req.addListener('body', req.extractFormParams)
 		// todo: handle other kinds of payloads, like file uploads and arbitrary
 		//       data.
+		// todo: when form data, buffer up and parse on "complete".
 
 		// Q: Will request:"complete" be emitted even if there is data still to
 		//    be read?
