@@ -2,14 +2,14 @@
 
 A small web service toolkit for node.js
 
-*Still in the early works*
+Developed as part of the new [Dropular](http://dropular.net/) website.
 
 ## Example
 
 Here's a complete (although somewhat minimal) app:
 
 	require('oui').start(8080)
-	GET('/hello', function(params){
+	GET('/hello', function(params, req, res){
 		return {
 			message: 'hello to you too',
 			you_sent_me: params
