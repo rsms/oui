@@ -26,9 +26,6 @@ RE_OUTER_DQUOTES = /^"+|"+$/g
 RE_COMMA_WS = /,\s*/
 BODYLESS_STATUSES = [204,205,304] // HTTP statuses without body
 
-// Shorthand empty function, primarily for req handles
-exports.NOOP = function(){}
-
 // Enable debug mode (verbose async output to stdout)
 exports.debug = false
 
@@ -322,7 +319,7 @@ process.mixin(http.ServerResponse.prototype, {
 	},
 
 	sendObject: function(responseObject) {
-		body = this.format(responseObject)
+		var body = this.format(responseObject)
 		this.sendData(body)
 	},
 
@@ -554,7 +551,7 @@ function createServer() {
 			}
 
 			// did the handler finish the response or take over responsibility?
-			if (res.finished || responseObject === false)
+			if (!responseObject || res.finished)
 				return
 
 			// format responseObject
@@ -874,3 +871,6 @@ function staticFileHandler(params, req, res) {
 	return false
 }
 exports.staticFileHandler = staticFileHandler
+
+// Shorthand empty handler
+exports.noopHandler = function(){ return true; }
