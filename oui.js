@@ -551,7 +551,7 @@ function createServer() {
 			}
 
 			// did the handler finish the response or take over responsibility?
-			if (!responseObject || res.finished)
+			if (responseObject === undefined || res.finished)
 				return
 
 			// format responseObject
