@@ -17,7 +17,7 @@
  */
 http = require('http')
 sys = require('sys')
-posix = require('posix')
+fs = require('fs')
 url = require("url")
 querystring = require("querystring")
 path = require('path')
@@ -188,19 +188,19 @@ process.mixin(http.IncomingMessage.prototype, {
 		var bodyless = BODYLESS_STATUSES.indexOf(res.status) !== -1;
 		if (typeof body === 'string' && !bodyless) {
 			res.headers.push(['Content-Length', body.length])
-			res.sendHeader()
-			if (res.finished) // sendHeader might have finished the response
+			res.writeHeader()
+			if (res.finished) // writeHeader might have finished the response
 				return;
 			// HEAD responses must not include an entity
 			if (!(res.status === 200 && this.method === 'HEAD'))
-				res.sendBody(body, res.encoding)
+				res.write(body, res.encoding)
 		}
 		else {
 			if (!bodyless)
 				res.headers.push(['Content-Length', '0'])
-			res.sendHeader()
+			res.writeHeader()
 		}
-		res.finish()
+		res.close()
 	}
 })
 
@@ -223,16 +223,16 @@ http.IncomingMessage.prototype.__defineSetter__("filename", function(v) {
 
 
 // outgoing msg additions
-var _http_OutgoingMessage_finish = http.OutgoingMessage.prototype.finish
+var _http_OutgoingMessage_close = http.OutgoingMessage.prototype.close
 process.mixin(http.OutgoingMessage.prototype, {
-	finish: function() {
-		_http_OutgoingMessage_finish.call(this)
-		this.emit("finish")
+	close: function() {
+		_http_OutgoingMessage_close.call(this);
+		this.emit("close");
 	}
 })
 
 // response additions (inherits from http.OutgoingMessage)
-var _http_ServerResponse_sendHeader = http.ServerResponse.prototype.sendHeader
+var _http_ServerResponse_writeHeader = http.ServerResponse.prototype.writeHeader
 process.mixin(http.ServerResponse.prototype, {
 	prepare: function() {
 		var server = this.request.connection.server
@@ -248,15 +248,15 @@ process.mixin(http.ServerResponse.prototype, {
 		this.allowedOrigin = server.allowedOrigin
 	},
 
-	// monkey patch sendHeader so we can set some headers automatically
-	sendHeader: function(statusCode, headers) {
+	// monkey patch writeHeader so we can set some headers automatically
+	writeHeader: function(statusCode, headers) {
 		statusCode = statusCode || this.status
 		headers = headers || this.headers
 		if (this.request.cookies && this.request.cookies.length)
 			this.addCookieHeaders(headers)
 		if (this.allowedOrigin)
 			this.addACLHeaders(headers)
-		_http_ServerResponse_sendHeader.apply(this, [statusCode, headers]);
+		_http_ServerResponse_writeHeader.apply(this, [statusCode, headers]);
 		if (this.request.connection.server.debug) {
 			var r = this.request
 			var s = '[oui] --> '+r.method+' '+r.path+
@@ -266,9 +266,9 @@ process.mixin(http.ServerResponse.prototype, {
 				s += '\n  '+headers[k][0]+': '+headers[k][1]
 			sys.debug(s)
 		}
-		this.started = true
+		this.started = true;
 		if (this.request.method === 'HEAD')
-			this.finish()
+			this.end();
 	},
 
 	addCookieHeaders: function(headers) {
@@ -379,13 +379,6 @@ process.mixin(http.ServerResponse.prototype, {
 		return {error: e}
 	},
 
-	guard: function(promise, msg) {
-		var res = this;
-		return promise.addErrback(function(error) {
-			res.sendError(null, null, msg || '', error)
-		});
-	},
-
 	tryGuard: function(fun, msg) {
 		try {
 			fun()
@@ -404,11 +397,15 @@ process.mixin(http.ServerResponse.prototype, {
 		this.request.sendResponse(body)
 	},
 
-	sendError: function(status, title, message, exception) {
-		var obj = this.mkError(status, title, message, exception)
+	sendError: function(status, title, message, error) {
+	  if (status instanceof Error) {
+	    error = status;
+	    status = undefined;
+	  }
+		var obj = this.mkError(status, title, message, error);
 		this.request.connection.server.debug && sys.debug(
-			'[oui] sendError '+sys.inspect(obj.error))
-		this.sendObject(obj)
+			'[oui] sendError '+sys.inspect(obj.error));
+		this.sendObject(obj);
 	},
 
 	doesMatchRequestPredicates: function(etag, mtime) {
@@ -448,111 +445,107 @@ process.mixin(http.ServerResponse.prototype, {
 		return false
 	},
 
-	sendFile: function(abspath, contentType, stats, successCb) {
+	sendFile: function(abspath, contentType, stats, callback) {
+	  if (!callback) callback = function(){};
 		if (!abspath || abspath.constructor !== String)
 			throw 'first argument must be a string'
-		var promise = new process.Promise();
-		// we need to set successCb here as a pre-stat'ed file in combo with
-		// if-match*, no I/O is done thus we will emitSuccess before returning
-		// control.
-		if (typeof successCb === 'function')
-			promise.addCallback(successCb)
 		var res = this;
-
 		var statsCb = function (s) {
-			var etag = stat2etag(s)
+			var errorClosure = function (error) {
+  			sys.error('sendFile failed for "'+abspath+'"');
+  			if (!res.finished) {
+  				// Since response has not begun, send a pretty error message
+  				res.sendError(500, "I/O error", error);
+  			}
+  			else {
+  				// Response already begun
+  				res.close();
+  			}
+  			callback(error);
+  		}
+			var etag = stat2etag(s);
 
 			if (!contentType)
-				contentType = mimetype.lookup(path.extname(abspath)) || 'application/octet-stream'
-			res.headers.push(['Content-Type', contentType])
-			res.headers.push(['Last-Modified', s.mtime.toUTCString()])
-			res.headers.push(['ETag', '"'+etag+'"'])
+				contentType = mimetype.lookup(path.extname(abspath)) 
+				  || 'application/octet-stream';
+			res.headers.push(['Content-Type', contentType]);
+			res.headers.push(['Last-Modified', s.mtime.toUTCString()]);
+			res.headers.push(['ETag', '"'+etag+'"']);
 
 			// not modified?
-			var match_status = res.doesMatchRequestPredicates(etag, s.mtime)
+			var match_status = res.doesMatchRequestPredicates(etag, s.mtime);
 			if (match_status) {
-				met = res.request.method
-				res.status = (met === 'GET' || me === 'HEAD') ? match_status : 412
-				var shouldAddContentLength = true
+				met = res.request.method;
+				res.status = (met === 'GET' || me === 'HEAD') ? match_status : 412;
+				var shouldAddContentLength = true;
 				for (var i=0;i<res.headers.length;i++) {
 					var kv = res.headers[i];
 					if (kv[0].toLowerCase() === 'content-length') {
-						res.headers[i][1] = '0'
-						shouldAddContentLength = false
+						res.headers[i][1] = '0';
+						shouldAddContentLength = false;
 						break;
 					}
 				}
 				if (shouldAddContentLength)
-					res.headers.push(['Content-Length', '0'])
+					res.headers.push(['Content-Length', '0']);
 			}
 			else {
-				res.headers.push(['Content-Length', s.size])
+				res.headers.push(['Content-Length', s.size]);
 			}
 
 			// send headers
-			res.chunked_encoding = false
-			res.sendHeader()
-			res.flush()
+			res.chunked_encoding = false;
+			res.writeHeader();
+			res.flush();
 			if (match_status) {
-				res.finish()
-				promise.emitSuccess(0)
-				return
+				res.close();
+				return callback(null, 0);
 			}
 
 			// forward
-			var enc = 'binary', rz = 16*1024
-			posix.open(abspath, process.O_RDONLY, 0666).addCallback(function(fd) {
+			var enc = 'binary', rz = 8*1024;
+			fs.open(abspath, process.O_RDONLY, 0666, function(err, fd) {
+			  if (err) return errorClosure(err);
 				var pos = 0;
 				function readChunk () {
-					posix.read(fd, rz, pos, enc).addCallback(function(chunk, bytes_read) {
+					fs.read(fd, rz, pos, enc, function(err, chunk, bytes_read) {
+					  if (err) return errorClosure(err);
 						if (chunk) {
-							res.send(chunk, enc)
-							pos += bytes_read
-							readChunk()
+							res.write(chunk, enc);
+							pos += bytes_read;
+							readChunk();
 						}
 						else { // EOF
-							posix.close(fd)
-							res.finish()
-							promise.emitSuccess(pos)
+							res.close();
+							fs.close(fd, function (err) {
+							  if (err) errorClosure(err);
+                else callback(err, pos);
+              });
 						}
-					}).addErrback(function () {
-						// I/O error
-						promise.emitError.apply(promise, arguments);
 					});
 				}
 				readChunk();
-			}).addErrback(function () {
-				// open failed
-				promise.emitError.apply(promise, arguments);
 			});
 		}
-
-		// top level error handler
-		promise.addErrback(function (error) {
-			sys.error('sendFile failed for "'+abspath+'"')
-			if (!res.finished) {
-				// Since response has not begun, send a pretty error message
-				res.sendError(500, "I/O error", error)
-			}
-			else {
-				// Response already begun
-				res.finish()
-			}
-		})
 
 		// do we have a prepared stats object?
 		if (typeof stats === 'object') {
-			statsCb(stats)
+			statsCb(stats);
 		}
 		else {
 			// perform stat
-			posix.stat(abspath).addCallback(statsCb).addErrback(function (error) {
-				sys.puts('[oui] warn: failed to read '+sys.inspect(abspath)+'. '+error)
-				res.sendError(404, 'File not found', 'No file at "'+abspath+'"')
+			fs.stat(abspath, function (error, stats) {
+			  if (error) {
+  				sys.puts('[oui] warn: failed to read '+sys.inspect(abspath)+
+  				  '. '+error);
+  				res.sendError(404, 'File not found', 'No file at "'+abspath+'"');
+  				callback(error);
+  			}
+  			else {
+  			  statsCb(stats);
+  			}
 			});
 		}
-
-		return promise;
 	}
 })
 
@@ -578,7 +571,7 @@ function requestCompleteHandler(req, res) {
 		// let route handler act on req and res, possibly returning body struct
 		var body = req.route.handler.apply(server, [req.params, req, res])
 
-		// did the handler finish the response or take over responsibility?
+		// did the handler start the response or take over responsibility?
 		if (body === undefined || res.started)
 			return;
 
@@ -598,7 +591,7 @@ function requestCompleteHandler(req, res) {
 function requestHandler(req, res) {
 	if (this.debug) {
 		dateStarted = (new Date()).getTime()
-		res.addListener('finish', function(){
+		res.addListener('close', function(){
 			ms = ((new Date()).getTime() - dateStarted)
 			sys.debug('[oui] response finished (total time spent: '+ms+' ms)')
 		})
@@ -630,7 +623,7 @@ function requestHandler(req, res) {
 			return;
 
 		// take action when request is completely received
-		req.addListener('complete', function(){ requestCompleteHandler(req, res) });
+		req.addListener('end', function(){ requestCompleteHandler(req, res) });
 	}
 	catch(exc) {
 		return res.sendError(exc)
@@ -856,23 +849,36 @@ exports.mimetype = mimetype = {
 		})
 	},
 
-	_parseSystemTypes: function(paths) {
-		promise = new process.Promise()
+	_parseSystemTypes: function(paths, callback) {
+	  if (!callback) {
+	    for (var i=0;i<paths.length;i++) {
+	      var content;
+	      try {
+	        content = fs.readFileSync(paths[i], 'binary');
+        }
+        catch (e) {
+          if (i === paths.length-1)
+            throw new Error('no mime types databases found');
+          continue;
+        }
+        // parse outside of try so errors in parse propagates
+        mimetype.parse(content);
+        return paths[i];
+	    }
+	    return; // no error if the list <paths> was empty
+	  }
+	  // async
 		var next = function(){
-			var abspath = paths.shift()
-			if (!abspath) {
-				promise.emitError()
-				return
-			}
-			posix.cat(abspath).addCallback(function (content) {
-				mimetype.parse(content)
-				promise.emitSuccess(abspath)
-			}).addErrback(function(){
-				next()
+			var abspath = paths.shift();
+			if (!abspath)
+				return callback(new Error('no mime types databases found'));
+			fs.readFile(abspath, 'binary', function (err, content) {
+			  if (err) return next();
+				mimetype.parse(content);
+				callback(null, abspath);
 			});
 		}
-		next()
-		return promise
+		next();
 	},
 
 	/**
@@ -887,34 +893,49 @@ exports.mimetype = mimetype = {
 	 *
 	 * Example:
 	 *   mimetype.lookup('yml') => "text/yaml"
-	 *   mimetype.lookup('text/yaml') => ["yml", "yaml"]
+	 *   mimetype.lookup('text/yaml', function(err, types){
+	 *     // types => ["yml", "yaml"]
+	 *   })
 	 */
-	lookup: function(extOrType) {
+	lookup: function(extOrType, callback) {
 		// lazy importing of system mime types
 		if (mimetype.knownfiles !== undefined) {
-			try {
-				// do this synchronously, since we want to avoid first lookup
-				// to yield different results from following lookups
-				mimetype._parseSystemTypes(mimetype.knownfiles).wait()
-			} catch(e){}
-			delete mimetype.knownfiles
+		  var filenames = mimetype.knownfiles;
+		  delete mimetype.knownfiles;
+			if (callback) {
+			  // async
+			  mimetype._parseSystemTypes(filenames, function(err){
+			    callback(err, mimetype._lookup(extOrType));
+			  });
+			  return;
+		  }
+		  else {
+		    // sync
+		    mimetype._parseSystemTypes(filenames);
+		    return mimetype._lookup(extOrType);
+		  }
 		}
-		// look up type based on extension, or extension based on type
-		extOrType = extOrType.toLowerCase()
+		var r = mimetype._lookup(extOrType);
+		return callback ? callback(null, r) : r;
+	},
+	
+	_lookup: function(extOrType) {
+	  // look up type based on extension, or extension based on type
+		extOrType = extOrType.toLowerCase();
 		if (extOrType.indexOf('/') === -1) {
 			if (extOrType.charAt(0) === '.')
-				extOrType = extOrType.substr(1)
-			return mimetype.types[extOrType]
+				extOrType = extOrType.substr(1);
+			return mimetype.types[extOrType];
 		}
 		else {
-			exts = []
+			var exts = [];
 			for (var k in mimetype.types) {
 				if (mimetype.types[k] === extOrType)
-					exts.push(k)
+					exts.push(k);
 			}
-			return exts
+			return exts;
 		}
-	},
+	}
 }
 
 
@@ -954,24 +975,23 @@ exports.expose = function(methods, path, handler){
 
 /** Handler which takes care of requests for files */
 function staticFileHandler(params, req, res) {
-	var server = this
+	var server = this;
 	var notfoundCb = function() {
 		server.debug && sys.debug('[oui] "'+req.filename+'" does not exist')
 		res.sendError(404, 'File not found', 'Nothing found at '+req.path, null)
 	}
 
-	if (!req.filename) {
-		notfoundCb()
-		return;
-	}
+	if (!req.filename)
+		return notfoundCb();
 
-	posix.stat(req.filename).addCallback(function(stats) {
+	fs.stat(req.filename, function(err, stats) {
+	  if (err) return notfoundCb();
 		if (stats.isFile()) {
-			res.sendFile(req.filename, null, stats)
+			res.sendFile(req.filename, null, stats);
 		}
 		else if (server.indexFilenames && stats.isDirectory()) {
 			server.debug && sys.debug(
-				'[oui] trying server.indexFilenames for directory '+req.filename)
+				'[oui] trying server.indexFilenames for directory '+req.filename);
 			var _indexFilenameIndex = 0;
 			var tryNextIndexFilename = function() {
 				var name = server.indexFilenames[_indexFilenameIndex++];
@@ -982,22 +1002,22 @@ function staticFileHandler(params, req, res) {
 				}
 				var filename = path.join(req.filename, name);
 				sys.debug('try '+filename)
-				posix.stat(filename).addCallback(function(stats2) {
-					if (stats2.isFile())
-						res.sendFile(filename, null, stats2)
+				fs.stat(filename, function(err, stats2) {
+				  if (err || !stats2.isFile())
+				    tryNextIndexFilename();
 					else
-						tryNextIndexFilename();
-				}).addErrback(tryNextIndexFilename);
+					  res.sendFile(filename, null, stats2);
+				});
 			}
 			tryNextIndexFilename();
 		}
 		else {
-			server.debug && sys.debug('[oui] "'+req.url.pathname+'" is not a readable file.'+
-				' stats => '+JSON.stringify(stats))
+			server.debug && sys.debug('[oui] "'+req.url.pathname+
+			  '" is not a readable file.'+' stats => '+JSON.stringify(stats));
 			res.sendError(404, 'Unable to handle file',
-				sys.inspect(req.url.pathname)+' is not a readable file')
+				sys.inspect(req.url.pathname)+' is not a readable file');
 		}
-	}).addErrback(notfoundCb)
+	});
 }
 exports.staticFileHandler = staticFileHandler
 
