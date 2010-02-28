@@ -1,0 +1,53 @@
+#!/usr/bin/env node --
+
+var sys = require('sys')
+   ,Builder = require('./builder').Builder
+   ,trollop = require('./trollop')
+
+function main(argv, callback) {
+  if (typeof argv === 'function') {
+    callback = argv;
+    argv = undefined;
+  }
+
+  if (!Array.isArray(argv)) argv = process.argv;
+
+  var options = [
+    'Usage: oui [options] <sourcedir> ..',
+    'Options:',
+    ['output_dir',  'Where to place built products.',
+                    {type:'string', def:'build'}],
+    ['cc_level',    'Closure Compiler optimization level [0-3].', 
+                    {short:'O', def:0, type:'int'}],
+    ['force',       'Force rebuild.'],
+    ['quiet',       'Silent operation.'],
+    ['verbose',     'Verbose operation.'],
+    ['help',        'Show this help message.'],
+  ];
+  options = trollop.options(argv, options, function(){
+    // trollop parser initializer
+  });
+  
+  // strip away ["node", "script"]
+  argv = argv.slice(2);
+  
+  var builder = new Builder();
+  builder.productsDir = options.output_dir;
+  builder.srcDirs = argv;
+  builder.force = options.force;
+  builder.logLevel = options.verbose ? 2 : (options.quiet ? 0 : 1);
+  builder.all(function(err){
+    if (callback) {
+      callback(err);
+    }
+    else if (err) {
+      sys.error('build failed: '+(err.stack || err));
+      process.exit(1);
+    }
+    else {
+      process.exit(0);
+    }
+  });
+}
+
+main();
