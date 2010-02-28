@@ -188,8 +188,8 @@ process.mixin(http.IncomingMessage.prototype, {
 		var bodyless = BODYLESS_STATUSES.indexOf(res.status) !== -1;
 		if (typeof body === 'string' && !bodyless) {
 			res.headers.push(['Content-Length', body.length])
-			res.writeHeader()
-			if (res.finished) // writeHeader might have finished the response
+			res.writeHead()
+			if (res.finished) // writeHead might have finished the response
 				return;
 			// HEAD responses must not include an entity
 			if (!(res.status === 200 && this.method === 'HEAD'))
@@ -198,7 +198,7 @@ process.mixin(http.IncomingMessage.prototype, {
 		else {
 			if (!bodyless)
 				res.headers.push(['Content-Length', '0'])
-			res.writeHeader()
+			res.writeHead()
 		}
 		res.close()
 	}
@@ -232,7 +232,7 @@ process.mixin(http.OutgoingMessage.prototype, {
 })
 
 // response additions (inherits from http.OutgoingMessage)
-var _http_ServerResponse_writeHeader = http.ServerResponse.prototype.writeHeader
+var _http_ServerResponse_writeHead = http.ServerResponse.prototype.writeHead
 process.mixin(http.ServerResponse.prototype, {
 	prepare: function() {
 		var server = this.request.connection.server
@@ -248,15 +248,15 @@ process.mixin(http.ServerResponse.prototype, {
 		this.allowedOrigin = server.allowedOrigin
 	},
 
-	// monkey patch writeHeader so we can set some headers automatically
-	writeHeader: function(statusCode, headers) {
+	// monkey patch writeHead so we can set some headers automatically
+	writeHead: function(statusCode, headers) {
 		statusCode = statusCode || this.status
 		headers = headers || this.headers
 		if (this.request.cookies && this.request.cookies.length)
 			this.addCookieHeaders(headers)
 		if (this.allowedOrigin)
 			this.addACLHeaders(headers)
-		_http_ServerResponse_writeHeader.apply(this, [statusCode, headers]);
+		_http_ServerResponse_writeHead.apply(this, [statusCode, headers]);
 		if (this.request.connection.server.debug) {
 			var r = this.request
 			var s = '[oui] --> '+r.method+' '+r.path+
@@ -495,7 +495,7 @@ process.mixin(http.ServerResponse.prototype, {
 
 			// send headers
 			res.chunked_encoding = false;
-			res.writeHeader();
+			res.writeHead();
 			res.flush();
 			if (match_status) {
 				res.close();
