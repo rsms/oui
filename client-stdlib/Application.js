@@ -1,17 +1,11 @@
-/** Capabilities */
-function Capabilities() {
-	// CORS?
-	this.cors = (window.XMLHttpRequest &&
-		((new XMLHttpRequest()).withCredentials !== undefined || window.XDomainRequest));
-}
 
 /** Application */
-function Application() {
+oui.Application = function() {
 	this.capabilities = new Capabilities();
 	this.automaticallyPresentsErrors = false;
 }
-mix(Application, EventEmitter, function(P){
-	P.main = function(){
+oui.mixin(oui.Application.prototype, oui.EventEmitter.prototype, {
+	main: function(){
 		this.session = new Session(this);
 		this.emit('boot');
 		var self = this;
@@ -20,7 +14,7 @@ mix(Application, EventEmitter, function(P){
 			if (self.session)
 				self.session.open();
 		});
-	}
+	},
 	
 	/**
 	 * Causes a uniform error object to be emitted for "error".
@@ -39,7 +33,7 @@ mix(Application, EventEmitter, function(P){
 	 *
 	 * The <msgOrErrorObject> argument can be an error object or a message string.
 	 */
-	P.emitError = function(msgOrErrorObject, origin, error, ev, data) {
+	emitError: function(msgOrErrorObject, origin, error, ev, data) {
 		var err = (typeof msgOrErrorObject === 'object') ? msgOrErrorObject : {};
 		if (error) err.error = error;
 		if (origin) err.origin = origin;
@@ -51,12 +45,12 @@ mix(Application, EventEmitter, function(P){
 		this.emit('error', err);
 		if (this.automaticallyPresentsErrors)
 			this.presentError(err);
-	}
+	},
 	
-	P.presentError = function(error) {
+	presentError: function(error) {
 		if (!ui.alert) return;
 		var details;
-		if (window.OUI_DEBUG) {
+		if (oui.debug) {
 			details = (typeof error.data === 'object') ? error.data : {};
 			details = $.extend(details, {
 				error: error.error,
@@ -67,4 +61,5 @@ mix(Application, EventEmitter, function(P){
 		return ui.alert.show(error.message, error.description, details);
 	}
 });
-window.app = new Application();
+
+oui.app = new oui.Application();

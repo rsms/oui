@@ -52,7 +52,7 @@ ui.modal = {
 			ctx.element.find('.message').text(ctx.message);
 		
 		if (ctx.description)
-			ctx.element.find('.description').html(htmlesc(ctx.description, true) || '');
+			ctx.element.find('.description').html(oui.htmlesc(ctx.description, true) || '');
 		
 		if (ctx.defaultButton)
 			ctx.defaultButton.click(function(){ ctx.promise.emitSuccess(ctx.defaultButton); });
@@ -114,8 +114,8 @@ ui.alert = {
 						kv.push($.toJSON(k2) + ': '+v);
 					v = String(v.constructor || 'Object')+'{'+kv.join(', ')+'}';
 				}
-				detailsHtml += '<li><strong>'+htmlesc(k)+':</strong> '+
-					'<tt>' + htmlesc(String(v)) + '</tt></li>';
+				detailsHtml += '<li><strong>'+oui.htmlesc(k)+':</strong> '+
+					'<tt>' + oui.htmlesc(String(v)) + '</tt></li>';
 			}
 			var q = modal.find('.details').show();
 			q.find('ul').remove();
