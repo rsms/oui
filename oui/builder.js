@@ -94,7 +94,7 @@ var statable = {
 function Product(builder, filename, type, sources) {
   this.builder = builder;
   this.filename = filename;
-  this.type = type || path.extname(relname).substr(1).toLowerCase();
+  this.type = type || path.extname(filename).substr(1).toLowerCase();
   this.sources = sources || [];
   this.stats = undefined;
 }
@@ -133,13 +133,26 @@ process.mixin(Product.prototype, {
     var flags = process.O_CREAT | process.O_TRUNC | process.O_WRONLY;
     fs.open(this.filename, flags, 0666, function (err, fd) {
       if (err) {
-        sys.error('SDFSDF')
+        if (err.message) err.message += " "+sys.inspect(self.filename);
         if (callback) callback(err);
         return;
       }
       var queue = new CallQueue(self, false, callback);
+      self.sources.sort(function(a, b){
+        return (a.name.toLowerCase() < b.name.toLowerCase()) ? -1 : 1;
+      });
+      // jquery module has top prioritity
       for (var i=0; i<self.sources.length; i++) {
         var source = self.sources[i];
+        if (source.name.toLowerCase() === 'jquery') {
+          self.sources.splice(i,1);
+          self.sources.unshift(source);
+          break; //i--;
+        }
+      }
+      for (var i=0; i<self.sources.length; i++) {
+        var source = self.sources[i];
+        sys.error('write '+source)
         queue.push(function(cl){ source.write(fd, cl); });
       }
       queue.start();
@@ -161,7 +174,7 @@ function Source(builder, filename, relname, content) {
   this.filename = filename;
   this.relname = relname;
   this.content = content;
-  this.type = path.extname(relname).substr(1).toLowerCase();
+  this.type = path.extname(filename).substr(1).toLowerCase();
   this.products = []; // all products which are build using this source
 }
 process.mixin(Source.prototype, statable);
@@ -216,6 +229,15 @@ process.mixin(Source.prototype, {
     return this._dirty = false;
   },
   
+  get name() {
+    if (this._name === undefined) {
+      this._name = this.relname;
+      if (this._name.length)
+        this._name = this._name.replace(/(?:\.min|)\.[^\.]+$/, '');
+    }
+    return this._name;
+  },
+  
   write: function(fd, callback) {
     if (!this.content) {
       fs.readFile(this.filename, 'binary', function(err, content) {
@@ -240,7 +262,7 @@ process.mixin(Source.prototype, {
     }
     
     // skip compilation of "*.min.js"
-    if (this.relname.lastIndexOf('.min.js') === this.relname.length-7) {
+    if (this.filename.lastIndexOf('.min.js') === this.filename.length-7) {
       this.builder.log('not compiling '+this+' (already compiled)', 2);
       if (callback) callback();
       return;
@@ -261,13 +283,13 @@ process.mixin(Source.prototype, {
   
   /// String rep
   toString: function() {
-    return 'Source('+this.type+', '+JSON.stringify(this.relname)+')';
+    return 'Source('+this.type+', '+JSON.stringify(this.name)+')';
   }
 });
 
 // -------------------------------------------------------------------------
 
-const BUILDER_DEFAULT_SRCFILTER = /\.(?:js|css|x?html?)$/i;
+const BUILDER_DEFAULT_SRCFILTER = /^[^\.].*\.(?:js|css|x?html?)$/i;
 
 function Builder(srcDirs) {
   this.srcDirs = Array.isArray(srcDirs) || [];
@@ -337,10 +359,18 @@ process.mixin(Builder.prototype, {
   collectSources: function(callback) {
     this.log('Collecting', 1);
     var self = this,
-        eve = fs.find(this.srcDirs, this.srcFilter, true, callback);
+        eve = fs.find(this.srcDirs, this.srcFilter, true, callback),
+        didAddStdlib = false;
     eve.addListener('file', function(relpath, abspath, ctx){
+      var source;
+      if (!didAddStdlib && self.stdlib && self.stdlibJSPath) {
+        source = new Source(self, self.stdlibJSPath, '');
+        self.sources.push(source);
+        source.stat(ctx.cl.handle());
+        didAddStdlib = true;
+      }
       self.log('collect '+relpath, 2);
-      var source = new Source(self, abspath, relpath);
+      source = new Source(self, abspath, relpath);
       self.sources.push(source);
       source.stat(ctx.cl.handle());
     });
@@ -369,12 +399,7 @@ process.mixin(Builder.prototype, {
     }, callback);
   },
   
-  output: function(callback) {
-    this.log('Writing products', 1);
-    
-    var rcb = new util.RCB(callback);
-    rcb.open();
-    
+  _mkOutputDirs: function(callback) {
     // mkdirs
     var dirnames = {}, types = Object.keys(this.products);
     for (var i=0; i<types.length;i++) {
@@ -383,14 +408,25 @@ process.mixin(Builder.prototype, {
         dirnames[path.dirname(product.filename)] = 1;
     }
     dirnames = Object.keys(dirnames);
-    for (var i=0; i<dirnames.length;i++)
-      fs.mkdirs(dirnames[i], rcb.handle());
-    
-    // write
+    if (dirnames.length) {
+      var rcb = new util.RCB(callback);
+      rcb.open();
+      for (var i=0; i<dirnames.length;i++)
+        fs.mkdirs(dirnames[i], rcb.handle());
+      rcb.close();
+    }
+    else {
+      callback();
+    }
+  },
+  
+  output: function(callback) {
+    this.log('Writing products', 1);
+    var rcb = new util.RCB(callback);
+    rcb.open();
     this.forEachProduct(function(product, cl){
       product.output(cl);
     }, rcb);
-    
     rcb.close();
   },
   
@@ -402,6 +438,7 @@ process.mixin(Builder.prototype, {
       function(cl){ this.log('sources: '+this.sources.join('\n'), 2); cl(); },
       this.statProducts,
       this.compile,
+      this._mkOutputDirs,
       this.output,
       /*this.group,
       this.compile,

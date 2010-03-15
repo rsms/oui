@@ -16,6 +16,7 @@ function RCB(depth, callback) {
   
   // close (decr)
   this.close = function(err) {
+    //sys.debug('close('+err+')  '+self.depth)
     if (err) self.depth = 0; else self.depth--;
     if (self.depth === 0) {
       self.depth = -1;
@@ -26,12 +27,14 @@ function RCB(depth, callback) {
   }
   
   this.open = function(){
+    //sys.debug('open()  '+self.depth)
     self.depth++;
     return self;
   }
   
   // produce a callback (which must be called)
   this.handle = function(cb2){
+    //sys.debug('open()  '+self.depth)
     self.depth++;
     if (cb2) {
       return function() {

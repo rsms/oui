@@ -1,24 +1,40 @@
 #!/usr/bin/env node --
 
 var sys = require('sys')
+   ,path = require('path')
    ,Builder = require('./builder').Builder
    ,trollop = require('./trollop')
 
-function main(argv, callback) {
-  if (typeof argv === 'function') {
+function build_stdlib() {
+  
+}
+
+function main(argv, options, callback) {
+  if (options === 'function') {
+    callback = options;
+    options = undefined;
+  }
+  else if (typeof argv === 'function') {
     callback = argv;
     argv = undefined;
   }
 
   if (!Array.isArray(argv)) argv = process.argv;
+  var inoptions = options;
 
-  var options = [
+  options = [
     'Usage: oui [options] <sourcedir> ..',
     'Options:',
     ['output_dir',  'Where to place built products.',
                     {type:'string', def:'build'}],
+    ['output_name', 'Product(s) filename (excluding file extension).',
+                    {type:'string', def:'index'}],
     ['cc_level',    'Closure Compiler optimization level [0-3].', 
                     {short:'O', def:0, type:'int'}],
+    ['no_stdlib',   'Do not link with the client standard library.',
+                    {short:'N'}],
+    ['stdlib_path', 'Custom location of client standard library.',
+                    {long:'stdlib', short:'S', type:'string'}],
     ['force',       'Force rebuild.'],
     ['quiet',       'Silent operation.'],
     ['verbose',     'Verbose operation.'],
@@ -28,26 +44,63 @@ function main(argv, callback) {
     // trollop parser initializer
   });
   
+  // inherit options
+  if (typeof inoptions === 'object') {
+    process.mixin(inoptions, options);
+    options = inoptions;
+  }
+  
   // strip away ["node", "script"]
   argv = argv.slice(2);
   
   var builder = new Builder();
   builder.productsDir = options.output_dir;
+  builder.productsName = options.output_name;
   builder.srcDirs = argv;
   builder.force = options.force;
   builder.logLevel = options.verbose ? 2 : (options.quiet ? 0 : 1);
-  builder.all(function(err){
-    if (callback) {
-      callback(err);
+  
+  if (!callback) {
+    callback = function(err){
+      if (err) {
+        sys.error('build failed: '+(err.stack || err));
+        process.exit(1);
+      }
+      else {
+        process.exit(0);
+      }
     }
-    else if (err) {
-      sys.error('build failed: '+(err.stack || err));
-      process.exit(1);
-    }
-    else {
-      process.exit(0);
-    }
-  });
+  }
+  
+  function continue_building() {
+    builder.all(callback);
+  }
+  
+  // using stdlib?
+  if (!options.no_stdlib) {
+    if (options.stdlib_path)
+      builder.stdlib = options.stdlib_path;
+    else
+      builder.stdlib = path.join(path.dirname(__dirname), 'client-stdlib');
+    builder.stdlibName = 'stdlib.min';
+    // first, build stdlib
+    var sout = path.join(builder.stdlib, '.build');
+    builder.stdlibJSPath = path.join(sout, builder.stdlibName+'.js');
+    var sargv = ['node', __filename, '--no-stdlib',
+      '--output-dir='+sout, '--output-name='+builder.stdlibName];
+    if (!options.verbose) sargv.push('--quiet');
+    else sargv.push('--verbose');
+    if (options.force) sargv.push('--force');
+    sargv.push(builder.stdlib);
+    sys.error(sargv.join(' '))
+    main(sargv, options, function(err){
+      if (!err) builder.all(callback);
+      else if (callback) callback(err);
+    })
+  }
+  else {
+    builder.all(callback);
+  }
 }
 
 main();

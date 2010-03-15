@@ -1,2 +1,2 @@
-exports.server = require('server');
-exports.builder = require('builder');
+exports.server = require('./server');
+exports.builder = require('./builder');
