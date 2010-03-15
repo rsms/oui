@@ -2,12 +2,14 @@
 
 var sys = require('sys')
    ,path = require('path')
+   ,fs = require('fs')
    ,Builder = require('./builder').Builder
-   ,trollop = require('./trollop')
+   ,trollop = require('./trollop');
 
-function build_stdlib() {
-  
-}
+var basedir = exports.basedir = 
+  path.dirname(path.dirname(fs.realpathSync(__filename)));
+
+var rundir = fs.realpathSync('.');
 
 function main(argv, options, callback) {
   if (options === 'function') {
@@ -26,15 +28,15 @@ function main(argv, options, callback) {
     'Usage: oui [options] <sourcedir> ..',
     'Options:',
     ['output_dir',  'Where to place built products.',
-                    {type:'string', def:'build'}],
+                    {short:'o', type:'string', def:'./build'}],
     ['output_name', 'Product(s) filename (excluding file extension).',
-                    {type:'string', def:'index'}],
-    ['cc_level',    'Closure Compiler optimization level [0-3].', 
+                    {short:'n', type:'string', def:'index'}],
+    ['optimize',    'Compiler optimization level [0-3].', 
                     {short:'O', def:0, type:'int'}],
-    ['no_stdlib',   'Do not link with the client standard library.',
+    /*['no_stdlib',   'Do not link with the client standard library.',
                     {short:'N'}],
     ['stdlib_path', 'Custom location of client standard library.',
-                    {long:'stdlib', short:'S', type:'string'}],
+                    {long:'stdlib', short:'S', type:'string'}],*/
     ['force',       'Force rebuild.'],
     ['quiet',       'Silent operation.'],
     ['verbose',     'Verbose operation.'],
@@ -46,7 +48,7 @@ function main(argv, options, callback) {
   
   // inherit options
   if (typeof inoptions === 'object') {
-    process.mixin(inoptions, options);
+    mixin(inoptions, options);
     options = inoptions;
   }
   
@@ -72,7 +74,7 @@ function main(argv, options, callback) {
     }
   }
   
-  function continue_building() {
+  /*function continue_building() {
     builder.all(callback);
   }
   
@@ -90,7 +92,7 @@ function main(argv, options, callback) {
       '--output-dir='+sout, '--output-name='+builder.stdlibName];
     if (!options.verbose) sargv.push('--quiet');
     else sargv.push('--verbose');
-    if (options.force) sargv.push('--force');
+    if (options.force_full) sargv.push('--force');
     sargv.push(builder.stdlib);
     sys.error(sargv.join(' '))
     main(sargv, options, function(err){
@@ -100,7 +102,18 @@ function main(argv, options, callback) {
   }
   else {
     builder.all(callback);
-  }
+  }*/
+  
+  // setup stdlib
+  /*if (!options.no_stdlib) {
+    builder.libraries.push({
+      path: options.stdlib_path
+         || path.join(basedir, 'client-stdlib', 'build', 'index.js'),
+      name: 'oui',
+    });
+  }*/
+  
+  builder.all(callback);
 }
 
 main();
