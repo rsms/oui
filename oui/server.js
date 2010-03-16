@@ -27,7 +27,7 @@ function stat2etag(s) {
 }
 
 // request additions
-process.mixin(http.IncomingMessage.prototype, {
+mixin(http.IncomingMessage.prototype, {
 	prepare: function() {
 		this.path = this.url
 		this.url = url.parse(this.url, true)
@@ -207,7 +207,7 @@ http.IncomingMessage.prototype.__defineSetter__("filename", function(v) {
 
 // outgoing msg additions
 var _http_OutgoingMessage_close = http.OutgoingMessage.prototype.close
-process.mixin(http.OutgoingMessage.prototype, {
+mixin(http.OutgoingMessage.prototype, {
 	close: function() {
 		_http_OutgoingMessage_close.call(this);
 		this.emit("close");
@@ -216,7 +216,7 @@ process.mixin(http.OutgoingMessage.prototype, {
 
 // response additions (inherits from http.OutgoingMessage)
 var _http_ServerResponse_writeHead = http.ServerResponse.prototype.writeHead
-process.mixin(http.ServerResponse.prototype, {
+mixin(http.ServerResponse.prototype, {
 	prepare: function() {
 		var server = this.request.connection.server
 		this.headers = [

@@ -1,0 +1,55 @@
+<script type="text/javascript" charset="utf-8">
+  
+  oui.app.on('start', function(ev){
+    exports.pipe = oui.pipe.get('message-board', function(err){
+      if (err) throw err;
+      __html.find('form').removeClass('closed');
+    });
+    exports.pipe.on('message', function(ev, msg){
+      if (msg.title && msg.message)
+      __html.find('ul.messages').prepend(
+        '<li>'+
+          '<b>'+oui.htmlesc(msg.title)+':</b> '+
+          oui.htmlesc(msg.message)+
+        '</li>'
+      );
+    })
+    .on('error', function(ev, err){
+      console.error(__name+'.pipe error: '+(err ? err.stack || err : ''));
+    })
+    .on('close', function(ev, err){
+      __html.find('form').addClass('closed');
+    });
+  });
+  
+  $(function(){
+    var form = __html.find('form');
+    form.submit(function(ev){
+      var msg = {};
+      msg.title = form.find('input[name=title]').get(0).value;
+      msg.message = form.find('textarea[name=message]').get(0).value;
+      exports.pipe.send(msg, function(err){
+        console.log(__name+'.postMessage() -> {err:'+err+'}');
+      });
+    });
+  });
+  
+</script>
+
+<style type="text/css" media="screen">
+  #this form.closed { display:none; }
+</style>
+
+<form class="closed">
+  <h2>Post a message</h2>
+  <label>
+    Title: <input type="text" name="title">
+  </label>
+  <label>
+    Message: <textarea name="message"></textarea>
+  </label>
+  <input type="submit" value="Post message">
+</form>
+<h2>Messages</h2>
+<ul class="messages">
+</ul>

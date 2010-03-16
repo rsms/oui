@@ -32,7 +32,7 @@ function main(argv, options, callback) {
     ['output_name', 'Product(s) filename (excluding file extension).',
                     {short:'n', type:'string', def:'index'}],
     ['optimize',    'Compiler optimization level [0-3].', 
-                    {short:'O', def:0, type:'int'}],
+                    {short:'O', def:2, type:'int'}],
     /*['no_stdlib',   'Do not link with the client standard library.',
                     {short:'N'}],
     ['stdlib_path', 'Custom location of client standard library.',
@@ -61,6 +61,7 @@ function main(argv, options, callback) {
   builder.srcDirs = argv;
   builder.force = options.force;
   builder.logLevel = options.verbose ? 2 : (options.quiet ? 0 : 1);
+  builder.optimize = options.optimize;
   
   if (!callback) {
     callback = function(err){

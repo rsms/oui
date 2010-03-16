@@ -1,54 +1,63 @@
 var sys = require('sys')
    ,path = require('path')
    ,fs = require('fs')
-   ,CallQueue = require('./queue').CallQueue
    ,util = require('./util')
+   ,jsmin = require('./builder/jsmin')
 
-require('./fs-additions');
-require('./string-additions');
+require('./std-additions');
 
 // -------------------------------------------------------------------------
 
-const HUNK_CSS_START = /<style[^>]+type=\"text\/css\"[^>]*>/im
-     ,HUNK_CSS_END = /<\/style>/i
-     ,HUNK_JS_START = /<script[^>]+type=\"text\/javascript\"[^>]*>/im
-     ,HUNK_JS_END = /<\/script>/i
+const HUNK_CSS_START = /[\n\r\t ]*<style[^>]+type=\"text\/css\"[^>]*>/img
+     ,HUNK_CSS_END = '</style>'
+     ,HUNK_JS_START = /[\n\r\t ]*<script[^>]+type=\"text\/javascript\"[^>]*>/img
+     ,HUNK_JS_END = '</script>';
 
-function extract_hunks(content, startRe, endRe, hunksOrCb) {
-	var index = 0;
-	var hunksOrCbIsFun = typeof hunksOrCb === 'function';
-	while (1) {
-		var m1 = startRe.exec(content, index);
-		if (!m1)
-			break;
-		index = m1.index + m1[0].length;
-		// find end
-		var m2 = endRe.exec(content, index);
-		if (!m2)
-			throw new Error('unable to find terminator ('+endRe+')');
-		// extract style from content
-		var hunk = content.substring(index, m2.index);
-		
-		if (hunksOrCbIsFun)
-		  hunksOrCb(hunk);
-		else
-		  hunks.push(hunk);
-		
-		content = content.substring(0, m1.index)
-			+ content.substr(m2.index+m2[0].length);
-		// fwd
-		index = (m2.index + m2[0].length) - hunk.length;
-	}
-	return content;
+function extract_hunks(content, startRe, endStr, hunksOrCb) {
+	var index = 0, m, p, hunk,
+	    hunksOrCbIsFun = (typeof hunksOrCb === 'function'),
+	    buf = '';
+	
+	while ((m = startRe.exec(content))) {
+	  if (   endStr === HUNK_JS_END 
+	      && content.substring(m.index, startRe.lastIndex).indexOf('src=') !== -1)
+	  {
+	    p = content.indexOf(endStr, startRe.lastIndex);
+	    if (p === -1) throw new Error('unable to find terminator ('+endStr+')');
+	    p = p+endStr.length;
+	    buf += content.substring(index, p);
+	    index = p;
+	    continue;
+	  }
+	  
+	  buf += content.substring(index, m.index); index = m.index;
+	  
+	  p = content.indexOf(endStr, startRe.lastIndex);
+	  if (p === -1) throw new Error('unable to find terminator ('+endStr+')');
+	  
+	  //sys.debug(' --> ['+m.index+'-'+startRe.lastIndex+')  ['+p+'-'+p+endStr.length+')');
+	  hunk = content.substring(startRe.lastIndex, p);
+	  if (hunk.trim().length) {
+  		if (hunksOrCbIsFun) hunksOrCb(hunk);
+  		else hunksOrCb.push(hunk);
+	  }
+	  
+	  index = p+endStr.length;
+  }
+  buf += content.substr(index);
+	return buf;
 }
 
 function fwriteall(fd, data, cb) {
-  fs.write(fd, data, 0, 'binary', function (writeErr, written) {
+  fs.write(fd, data, -1, 'binary', function (writeErr, written) {
     if (writeErr) {
       fs.close(fd, function(){ if (cb) cb(writeErr); });
     } else {
-      if (written === data.length) cb();
-      else fwriteall(fd, data.slice(written), cb);
+      if (written === data.length) {
+        if (cb) cb(); // do not close fd
+      } else {
+        fwriteall(fd, data.slice(written), cb);
+      }
     }
   });
 }
@@ -98,8 +107,8 @@ function Product(builder, filename, type, sources) {
   this.sources = sources || [];
   this.stats = undefined;
 }
-process.mixin(Product.prototype, statable);
-process.mixin(Product.prototype, {
+mixin(Product.prototype, statable);
+mixin(Product.prototype, {
   get dirty() {
     if (this._dirty !== undefined)
       return this._dirty;
@@ -115,29 +124,19 @@ process.mixin(Product.prototype, {
     return this._dirty = false;
   },
   
-  output: function(options, callback) {
-    if (typeof options === 'function') {
-      callback = options;
-      options = {};
-    }
-    
-    if (!this.builder.force && !this.dirty) {
-      this.builder.log('skipping up-to-date '+this.filename, 2);
-      if (callback) callback();
-      return;
-    }
-    
-    this.builder.log('writing '+this.filename, 2);
-    var self = this;
-    
-    var flags = process.O_CREAT | process.O_TRUNC | process.O_WRONLY;
+  _write: function(header, footer, callback) {
+    var self = this,
+        flags = process.O_CREAT | process.O_TRUNC | process.O_WRONLY;
     fs.open(this.filename, flags, 0666, function (err, fd) {
       if (err) {
         if (err.message) err.message += " "+sys.inspect(self.filename);
         if (callback) callback(err);
         return;
       }
-      var queue = new CallQueue(self, false, callback);
+      var queue = new util.CallQueue(self, false, function(err){
+        fs.close(fd, function(){ callback(err); });
+      });
+      // sort modules
       self.sources.sort(function(a, b){
         return (a.name.toLowerCase() < b.name.toLowerCase()) ? -1 : 1;
       });
@@ -150,13 +149,53 @@ process.mixin(Product.prototype, {
           break; //i--;
         }
       }
-      for (var i=0; i<self.sources.length; i++) {
-        var source = self.sources[i];
-        sys.error('write '+source)
-        queue.push(function(cl){ source.write(fd, cl); });
-      }
+      // queue writes
+      if (header && header.length !== 0)
+        queue.push(function(cl){ fwriteall(fd, header, cl); });
+      self.sources.forEach(function(source){
+        if (self.type !== 'html' || source.name !== 'index')
+          queue.push(function(cl){ source.write(fd, cl); });
+      });
+      if (footer && footer.length !== 0)
+        queue.push(function(cl){ fwriteall(fd, footer, cl); });
+      // execute
       queue.start();
     });
+  },
+  
+  output: function(callback) {
+    if (!this.builder.force && !this.dirty) {
+      this.builder.log('skipping up-to-date '+this.filename, 2);
+      if (callback) callback();
+      return;
+    }
+    
+    this.builder.log('writing '+this.filename, 2);
+    var self = this;
+    
+    // index.html ?
+    if (this.type === 'html') {
+      for (var i=0,L=this.sources.length; i<L; i++) {
+        var source = this.sources[i];
+        if (source.name === 'index') {
+          deferred = true;
+          source.compile(function(err){
+            if (err) { if (callback) callback(err); return; }
+            var header, footer, p = source.content.indexOf('</body>');
+            if (p !== -1) {
+              header = source.content.substr(0, p);
+              footer = source.content.substr(p);
+            }
+            // continue writing all modules in this product
+            self._write(header, footer, callback);
+          });
+          return;
+        }
+      }
+    }
+    
+    // continue writing all modules in this product
+    this._write(null, null, callback);
   },
   
   /// String rep
@@ -168,6 +207,9 @@ process.mixin(Product.prototype, {
 // -------------------------------------------------------------------------
 
 const SOURCE_DEMUXABLE_TYPE_RE = /^x?html?$/i;
+const SOURCE_JSOPT_UNTANGLED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:untangled/igm;
+const SOURCE_JSOPT_UNOPTIMIZED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:unoptimized/igm;
+const SOURCE_HTMLOPT_UNTANGLED_RE = /<\!--[\r\n\s]*oui:untangled/igm;
 
 function Source(builder, filename, relname, content) {
   this.builder = builder;
@@ -176,9 +218,11 @@ function Source(builder, filename, relname, content) {
   this.content = content;
   this.type = path.extname(filename).substr(1).toLowerCase();
   this.products = []; // all products which are build using this source
+  if (filename)
+    this.compiled = filename.lastIndexOf('.min.js') === filename.length-7;
 }
-process.mixin(Source.prototype, statable);
-process.mixin(Source.prototype, {
+mixin(Source.prototype, statable);
+mixin(Source.prototype, {
   /**
    * Demux (split) a source into possibly multiple sources, appended to
    * <sources>
@@ -230,41 +274,53 @@ process.mixin(Source.prototype, {
   },
   
   get name() {
-    if (this._name === undefined) {
-      this._name = this.relname;
-      if (this._name.length)
-        this._name = this._name.replace(/(?:\.min|)\.[^\.]+$/, '');
+    return this._name ||
+      (this._name = this.relname.replace(/(?:\.min|)\.[^\.]+$/, '').replace(/\/+/,'.'));
+  },
+  
+  get domname() {
+    return this.name.replace(/\./g, '-');
+  },
+  
+  loadContent: function (store, callback) {
+    if (this.content) {
+      if (callback) callback(null, this.content);
+      return;
     }
-    return this._name;
+    var self = this;
+    fs.readFile(this.filename, 'binary', function(err, content) {
+      if (err) {
+        if (callback) callback(err);
+      }
+      else {
+        if (store) self.content = content;
+        callback(null, content);
+      }
+    });
   },
   
   write: function(fd, callback) {
-    if (!this.content) {
-      fs.readFile(this.filename, 'binary', function(err, content) {
-        if (!err) fwriteall(fd, content, callback);
-        else if (callback) callback(err);
-        // yes, throw away content
-      })
-    }
-    else {
-      fwriteall(fd, this.content, callback);
-    }
+    this.loadContent(false, function(err, content){
+      if (!err) fwriteall(fd, content, callback);
+      else if (callback) callback(err);
+    });
   },
   
   /**
    * Compile the source, if needed.
    */
   compile: function(callback) {
-    // only js sources can be compiled
-    if (this.type !== 'js') {
+    // only js, html & css sources can be compiled
+    if (this.type !== 'js' && this.type !== 'html' && this.type !== 'css') {
       if (callback) callback();
       return;
     }
     
-    // skip compilation of "*.min.js"
-    if (this.filename.lastIndexOf('.min.js') === this.filename.length-7) {
+    // skip compilation of "*.min.js" ("compiled" files)
+    if (this.compiled || this.filename.lastIndexOf('.min.js') === this.filename.length-7) {
       this.builder.log('not compiling '+this+' (already compiled)', 2);
       if (callback) callback();
+      this.compiled = true;
       return;
     }
     
@@ -276,14 +332,76 @@ process.mixin(Source.prototype, {
     }
     
     this.builder.log('compiling '+this, 2);
-    // todo: compile
-    // start by stating for an already compiled version
+    this.compiled = true;
+    
+    var self = this;
+    this.loadContent(true, function(err){
+      if (!err) {
+        if (self.type === 'js') self._compileJS(callback);
+        else if (self.type === 'html') self._compileHTML(callback);
+        else if (self.type === 'css') self._compileCSS(callback);
+      } else if (callback) {
+        callback(err);
+      }
+    });
+  },
+  
+  _compileCSS: function(callback) {
+    this.content = this.content.replace(/#this/g, '#'+this.domname);
+    if (callback) callback();
+  },
+  
+  _compileHTML: function(callback) {
+    // oui:untangled
+    var tangle, cl = this.content.length;
+    if (this.type === 'html' && this.name === 'index') {
+      tangle = false;
+    } else {
+      this.content = this.content.replace(SOURCE_HTMLOPT_UNTANGLED_RE, '');
+      tangle = cl === this.content.length;
+    }
+    
+    if (tangle) {
+      this.content = '<module id='+JSON.stringify(this.domname)+'>\n    '+
+        this.content.replace(/^[\r\n\s]+/, '').replace(/[\r\n]/gm, '\n    ').replace(/[\r\n\s]*$/, '\n')+
+        '  </module>\n';
+    }
+    
+    if (callback) callback();
+  },
+  
+  _compileJS: function(callback) {
+    // oui:untangled
+    var tangle, cl = this.content.length;
+    this.content = this.content.replace(SOURCE_JSOPT_UNTANGLED_RE, '');
+    tangle = cl === this.content.length;
+    
+    if (tangle) {
+      this.content = '__defm('+JSON.stringify(this.name)+
+        ', function(exports, __name, __html){'+
+        this.content.replace(/[\r\n][\t ]*$/,'\n')+
+        '});/*'+this.name+'*/\n';
+    }
+    
+    // oui:unoptimized
+    var optimize, cl = this.content.length;
+    this.content = this.content.replace(SOURCE_JSOPT_UNOPTIMIZED_RE, '');
+    optimize = cl === this.content.length;
+    
+    if (optimize && this.builder.optimize > 0) {
+      var preSize = this.content.length;
+      this.content = jsmin.jsmin('', this.content, this.builder.optimize);
+      this.builder.log('optimized '+this+' -- '+
+        Math.round((1.0-(parseFloat(this.content.length)/preSize))*100.0)+
+        '% ('+(preSize-this.content.length)+' B) smaller', 2);
+    }
+    
     if (callback) callback();
   },
   
   /// String rep
   toString: function() {
-    return 'Source('+this.type+', '+JSON.stringify(this.name)+')';
+    return 'Source('+this.type+', '+sys.inspect(this.name)+')';
   }
 });
 
@@ -302,7 +420,7 @@ function Builder(srcDirs) {
   this.force = false; // ignore timestamps
 }
 
-process.mixin(Builder.prototype, {
+mixin(Builder.prototype, {
   log: function(msg, level) {
     if (this.logLevel >= (level === undefined ? 0 : level)) {
       if (level < 2) {
@@ -358,9 +476,12 @@ process.mixin(Builder.prototype, {
   
   collectSources: function(callback) {
     this.log('Collecting', 1);
-    var self = this,
-        eve = fs.find(this.srcDirs, this.srcFilter, true, callback),
-        didAddStdlib = false;
+    var self = this, eve, didAddStdlib = false;
+    eve = fs.find({
+      dirnames: this.srcDirs,
+      filter: this.srcFilter,
+      unbuffered: true,
+    }, callback);
     eve.addListener('file', function(relpath, abspath, ctx){
       var source;
       if (!didAddStdlib && self.stdlib && self.stdlibJSPath) {
@@ -421,7 +542,7 @@ process.mixin(Builder.prototype, {
   },
   
   output: function(callback) {
-    this.log('Writing products', 1);
+    this.log('Writing products to '+this.productsDir, 1);
     var rcb = new util.RCB(callback);
     rcb.open();
     this.forEachProduct(function(product, cl){
@@ -431,7 +552,7 @@ process.mixin(Builder.prototype, {
   },
   
   all: function(callback) {
-    var queue = new CallQueue(this, false, callback);
+    var queue = new util.CallQueue(this, false, callback);
     queue.push([
       this.collectSources,
       this.demux,

@@ -48,11 +48,17 @@ else {
 }
 
 // Define a module
-window.__defineModule = function(name, root, fun) {
+window.__defm = function(name, root, html, fun) {
   if (arguments.length === 2) {
     fun = root;
-    root = window.oui;
+    root = window;
   }
+  else if (arguments.length === 3) {
+    fun = html;
+    html = null;
+  }
+  if (!html)
+    html = jQuery('#'+name.replace(/\./g, '-'));
   var module = {}, namep = name.split('.'), 
       curr = root, n, i = 0, L = namep.length-1;
   for ( ; i<L; i++) {
@@ -61,7 +67,8 @@ window.__defineModule = function(name, root, fun) {
       curr[n] = {};
     curr = curr[n];
   }
-  fun.call(module, module, name);
+  // this, exports, __name, __html
+  fun.call(module, module, name, html);
   if (cs !== cs2) {
     var mname = namep[i];
     if (curr[mname] !== undefined) {
@@ -83,7 +90,7 @@ window.__defineModule = function(name, root, fun) {
 };
 
 // oui module
-__defineModule('oui', window, function(exports, __name){
+__defm('oui', window, function(exports, __name, __html){
 
 var EMPTYFUNC = function(){};
 

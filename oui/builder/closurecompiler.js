@@ -45,7 +45,7 @@ function compile(options, handler) {
 		output_file_name: undefined, // 
 		warning_level: undefined,    // "QUIET" | "DEFAULT" | "VERBOSE" 
 	};
-	if (typeof options === 'object') process.mixin(opt, options);
+	if (typeof options === 'object') mixin(opt, options);
 	else opt.js_code = options;
 	// todo: check for local closurecompiler program
 	return compile_remote(opt, handler);
