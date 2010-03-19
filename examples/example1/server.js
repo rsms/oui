@@ -1,20 +1,18 @@
-oui = require('./oui')
-oui.start(8080)
+var fs = require('fs'),
+    path = require('path'),
+    oui = require('oui');
 
-GET('/hello', function(){
-	return 'Hello to you too sir'
-})
+// Start a server
+var server = oui.server.start({
+  port: 8080,
+  documentRoot: path.join(path.dirname(fs.realpathSync(__filename)), 'public'),
+  allowedOrigin: /^https?:\/\/(?:(?:.+\.|)(?:dropular|hunch)\.[^\.]+|localhost|.+\.local)$/,
+});
 
-// Expose this handler for two different HTTP methods
-POST('/echo/:message', GET('/echo/:message', function(params, req, res){
-	require('sys').puts('message from cookie: '+req.cookie('message')) // read a cookie
-	req.cookie('message', params.message) // set a cookie
-	// returning complex objects automatically sends JSON (subject to change)
-	return {
-		key: 'some value',
-		params: params
-	}
-}))
+// Enable standard functionality (static file handling, sessions, etc).
+server.enableStandardHandlers();
 
-// Serve static files
-GET(/^.+/, oui.staticFileHandler)
+// A custom request handler saying hello
+server.on('GET', '/hello', function(){
+	return 'Hello to you too sir';
+});

@@ -3,7 +3,13 @@ var http = require('http'),
     fs = require('fs'),
     url = require("url"),
     querystring = require("querystring"),
-    path = require('path');
+    path = require('path'),
+    
+    mimetypes = require('../mimetypes'),
+    Routes = require('./routes').Routes,
+    oui = require('../'),
+    sessions = require('./session'),
+    handlers = exports.handlers = require('./handlers');
 
 const RE_OUTER_DQUOTES = /^"+|"+$/g,
       RE_COMMA_WS = /,\s*/,
@@ -11,15 +17,6 @@ const RE_OUTER_DQUOTES = /^"+|"+$/g,
 
 // Enable debug mode (verbose async output to stdout)
 exports.debug = false;
-
-var routes = {
-	GET: [],
-	POST: [],
-	PUT: [],
-	DELETE: [],
-	OPTIONS: []
-};
-exports.routes = routes;
 
 // utils
 function stat2etag(s) {
@@ -128,19 +125,7 @@ mixin(http.IncomingMessage.prototype, {
 	},
 
 	solveRoute: function() {
-		var rv = routes[(this.method === 'HEAD') ? 'GET' : this.method];
-		if (rv === undefined)
-			return
-		for (var i=0, L = rv.length; i < L; i++){
-			var route = rv[i]
-			var matches = route.path.exec(this.url.pathname)
-			if (matches) {
-				if (Array.isArray(matches) && matches.length)
-					route.extractParams(this, matches)
-				this.route = route
-				return route
-			}
-		}
+	  return this.route || (this.route = this.connection.server.routes.solve(this));
 	},
 
 	/**
@@ -449,7 +434,7 @@ mixin(http.ServerResponse.prototype, {
 			var etag = stat2etag(s);
 
 			if (!contentType)
-				contentType = mimetype.lookup(path.extname(abspath)) 
+				contentType = mimetypes.lookup(path.extname(abspath)) 
 				  || 'application/octet-stream';
 			res.headers.push(['Content-Type', contentType]);
 			res.headers.push(['Last-Modified', s.mtime.toUTCString()]);
@@ -599,7 +584,7 @@ function requestHandler(req, res) {
 	try {
 		// solve route
 		if (!req.solveRoute())
-			return res.sendError(404, req.path+' not found')
+			return res.sendError(404, req.path+' not found');
 
 		// parse the request (process header, cookies, register body buffer collectors, etc)
 		if (!req.parse())
@@ -611,6 +596,36 @@ function requestHandler(req, res) {
 	catch(exc) {
 		return res.sendError(exc)
 	}
+}
+
+// ------------------------------------------
+// Basic user prototype
+
+exports.BasicUser = function(id){
+  this.id = id;
+  this.pass_hash = '';
+  this.email = '';
+}
+exports.BasicUser.map = {};
+exports.BasicUser.create = function(properties, callback) {
+  var user = new exports.BasicUser();
+  mixin(user, properties);
+  if (user.id) exports.BasicUser.map[user.id] = user;
+	callback(null, user);
+}
+exports.BasicUser.remove = function(id, callback) {
+  if (exports.BasicUser.map[id]) {
+    delete exports.BasicUser.map[id];
+    callback(null, true);
+  } else {
+    callback(null, false);
+  }
+}
+exports.BasicUser.find = function(id, callback) {
+	callback(null, exports.BasicUser.map[id]);
+}
+exports.BasicUser.prototype.sessionObject = function() {
+  return {id: this.id, email: this.email};
 }
 
 /**
@@ -654,355 +669,77 @@ function requestHandler(req, res) {
  *      low number to prevent DoS attacks.
  *
  */
-function createServer() {
-	var server = http.createServer(requestHandler)
+exports.createServer = function() {
+	var server = http.createServer(requestHandler);
 
 	// Inherit debug property from module-wide property
-	server.debug = exports.debug
+	server.debug = exports.debug;
+	
+	// URL routing
+	server.routes = new Routes();
+	server.on = function(methods, path, priority, handler) {
+	  methods = Array.isArray(methods) ? methods : [methods];
+	  for (var i=0,L=methods.length;i<L;i++) {
+	    var method = methods[i];
+	    this.routes[method](path, priority, handler);
+	  }
+	  return this;
+	};
+	
+	// Sessions
+	server.sessions = new sessions.MemoryStore();
 
 	// Server name returned in responses. Please do not change this.
-	server.name = 'oui/0.1 node/'+process.version
+	server.name = 'oui/'+oui.version+' node/'+process.version;
 
 	// Allow any origin by default
 	server.allowedOrigin = /./;
 
-	// List of request content types we will buffer
+	// File to look for when requesting a directory
+	server.indexFilenames = ['index.html'];
+
+	// List of request content types we will buffer before parsing
 	server.bufferableRequestTypes = [
 		'application/x-www-form-urlencoded',
-		'application/json']
+		'application/json',
+	];
 
 	// Limit the size of a request body
 	server.maxRequestBodySize = 1024*1024*2; // 2 MB
+	
+	// secret key used for nonce creation. you should change this.
+	server.authNonceHMACKey = __filename;
+	
+	// User prototype
+	server.userPrototype = exports.BasicUser;
+	
+	// Standard handlers
+	server.enableStandardHandlers = function(sessionPrefix) {
+	  sessionPrefix = sessionPrefix || '/session';
+    this.on('GET', sessionPrefix+'/establish', handlers.session.establish);
+    this.on('GET', sessionPrefix+'/sign-in', handlers.session.signIn);
+    this.on('GET', sessionPrefix+'/sign-out', handlers.session.signOut);
+    // Serve static files & pass any OPTIONS request to allow XSS lookup:
+    this.on('GET', /^.+/, 0, handlers.static);
+    this.on('OPTIONS', /^.*/ , 0, handlers.noop);
+  }
 
-	return server
+	return server;
 }
 
 /** Start a server listening on [port[, addr]] */
-function start(port, addr, verbose, debug) {
-	server = createServer()
-	server.verbose = (verbose === undefined || verbose) ? true : false
-	if (debug !== undefined)
-		server.debug = debug
-	port = port || 80
-	server.listen(port, addr ? addr : undefined)
-	server.verbose && sys.puts('[oui] listening on '+(addr || '*')+':'+port)
-	return server
+exports.start = function(options) {
+  var opt = {
+    port: 80,
+    //addr, verbose, debug
+  };
+  if (typeof options==='object') mixin(opt, options);
+	server = exports.createServer();
+	server.verbose = (opt.verbose === undefined || opt.verbose) ? true : false;
+	if (opt.debug !== undefined) server.debug = opt.debug;
+	if (opt.allowedOrigin) server.allowedOrigin = opt.allowedOrigin;
+	if (opt.documentRoot) server.documentRoot = opt.documentRoot;
+	server.listen(opt.port, opt.addr);
+	server.verbose && sys.puts('[oui] listening on '+(opt.addr || '*')+':'+opt.port);
+	return server;
 }
-
-exports.createServer = createServer
-exports.start = start
-
-
-/** Represents a route to handler by path */
-function FixedStringMatch(string, caseSensitive) {
-	this.string = caseSensitive ? string : string.toLowerCase();
-	this.caseSensitive = caseSensitive;
-}
-FixedStringMatch.prototype.exec = function(str) {
-	return this.caseSensitive ? (str === this.string) : (str.toLowerCase() === this.string);
-}
-
-function Route(pat, handler) {
-	this.keys = []
-	this.path = pat
-	this.handler = handler
-
-	if (handler.routes === undefined)
-		handler.routes = [this]
-	else
-		handler.routes.push(this)
-
-	// GET(['/users/([^/]+)/info', 'username'], ..
-	if (Array.isArray(pat)) {
-		re = pat.shift()
-		if (!re || re.constructor !== RegExp)
-			re = new RegExp('^'+re+'$')
-		this.path = re
-		this.keys = pat
-	}
-	// GET('/users/:username/info', ..
-	else if (pat.constructor !== RegExp) {
-		pat = String(pat);
-		if (pat.indexOf(':') === -1) {
-			this.path = new FixedStringMatch(pat)
-			exports.debug && sys.debug(
-				'[oui] route '+sys.inspect(pat)+' treated as absolute fixed-string match')
-		}
-		else {
-			var nsrc = pat.replace(/:[^/]*/g, '([^/]*)')
-			nsrc = '^'+nsrc+'$'
-			exports.debug && sys.debug(
-				'[oui] route '+sys.inspect(pat)+' compiled to '+sys.inspect(nsrc))
-			this.path = new RegExp(nsrc, 'i') // case-insensitive by default
-			var param_keys = pat.match(/:[^/]*/g)
-			if (param_keys) for (var i=0; i < param_keys.length; i++)
-				this.keys.push(param_keys[i].replace(/^:/, ''))
-		}
-	}
-	// Pure RegExp
-	// GET(/^\/users\/(<username>[^\/]+)\/info$/', ..
-	// GET(/^\/users\/([^/]+)\/info$/, ..
-	else {
-		var src = pat.source
-		var p = src.indexOf('<')
-		if (p !== -1 && src.indexOf('>', p+1) !== -1) {
-			var re = /\(<[^>]+>/;
-			var m = null
-			p--
-			var nsrc = src.substr(0, p)
-			src = src.substr(p)
-			while (m = re.exec(src)) {
-				nsrc += src.substring(0, m.index+1) // +1 for "("
-				var mlen = m[0].length
-				src = src.substr(m.index+mlen)
-				this.keys.push(m[0].substr(2,mlen-3))
-			}
-			if (src.length)
-				nsrc += src
-			// i is the only modifier which makes sense for path matching routes
-			this.path = new RegExp(nsrc, pat.ignoreCase ? 'i' : undefined)
-		}
-		else {
-			this.path = pat
-		}
-	}
-}
-exports.Route = Route
-
-Route.prototype.extractParams = function(req, matches) {
-	var i, l, captures = []
-	matches.shift()
-	for (i=0, l = this.keys.length; i < l; i++)
-		req.params[this.keys[i]] = querystring.unescape(matches.shift(), true)
-	for (i=0, l = matches.length; i < l; i++)
-		captures[i] = querystring.unescape(matches[i], true)
-	req.params.captures = captures
-}
-
-
-exports.mimetype = mimetype = {
-	knownfiles: [
-		"/etc/mime.types",
-		"/etc/apache2/mime.types",              // Apache 2
-		"/etc/apache/mime.types",               // Apache 1
-		"/etc/httpd/mime.types",                // Mac OS X <=10.5
-		"/etc/httpd/conf/mime.types",           // Apache
-		"/usr/local/etc/httpd/conf/mime.types",
-		"/usr/local/lib/netscape/mime.types",
-		"/usr/local/etc/httpd/conf/mime.types", // Apache 1.2
-		"/usr/local/etc/mime.types"            // Apache 1.3
-	],
-
-	// a few common types "built-in"
-	types: {
-		 "css" : "text/css"
-		,"flv" : "video/x-flv"
-		,"gif" : "image/gif"
-		,"gz" : "application/x-gzip"
-		,"html" : "text/html"
-		,"ico" : "image/vnd.microsoft.icon"
-		,"jpg" : "image/jpeg"
-		,"js" : "application/javascript"
-		,"json" : "application/json"
-		,"mp4" : "video/mp4"
-		,"ogg" : "application/ogg"
-		,"pdf" : "application/pdf"
-		,"png" : "image/png"
-		,"svg" : "image/svg+xml"
-		,"tar" : "application/x-tar"
-		,"tbz" : "application/x-bzip-compressed-tar"
-		,"txt" : "text/plain"
-		,"xml" : "application/xml"
-		,"yml" : "text/yaml"
-		,"zip" : "application/zip"
-	},
-
-	parse: function(data) {
-		data.split(/[\r\n]+/).forEach(function(line){
-			line = line.trim()
-			if (line.charAt(0) === '#')
-				return
-			words = line.split(/\s+/)
-			if (words.length < 2)
-				return
-			type = words.shift().toLowerCase()
-			words.forEach(function(suffix) {
-				mimetype.types[suffix.toLowerCase()] = type
-			})
-		})
-	},
-
-	_parseSystemTypes: function(paths, callback) {
-	  if (!callback) {
-	    for (var i=0;i<paths.length;i++) {
-	      var content;
-	      try {
-	        content = fs.readFileSync(paths[i], 'binary');
-        }
-        catch (e) {
-          if (i === paths.length-1)
-            throw new Error('no mime types databases found');
-          continue;
-        }
-        // parse outside of try so errors in parse propagates
-        mimetype.parse(content);
-        return paths[i];
-	    }
-	    return; // no error if the list <paths> was empty
-	  }
-	  // async
-		var next = function(){
-			var abspath = paths.shift();
-			if (!abspath)
-				return callback(new Error('no mime types databases found'));
-			fs.readFile(abspath, 'binary', function (err, content) {
-			  if (err) return next();
-				mimetype.parse(content);
-				callback(null, abspath);
-			});
-		}
-		next();
-	},
-
-	/**
-	 * Look up mime type for a filename extension, or look up
-	 * list of filename extension for a mime type.
-	 *
-	 * Returns a string if <extOrType> is an extension (does not
-	 * contain a "/"), otherwise a list of strings is returned.
-	 *
-	 * For compatibility with path.extname(), a filename extension
-	 * is allowed to include the "." prefix (which will be stripped).
-	 *
-	 * Example:
-	 *   mimetype.lookup('yml') => "text/yaml"
-	 *   mimetype.lookup('text/yaml', function(err, types){
-	 *     // types => ["yml", "yaml"]
-	 *   })
-	 */
-	lookup: function(extOrType, callback) {
-		// lazy importing of system mime types
-		if (mimetype.knownfiles !== undefined) {
-		  var filenames = mimetype.knownfiles;
-		  delete mimetype.knownfiles;
-			if (callback) {
-			  // async
-			  mimetype._parseSystemTypes(filenames, function(err){
-			    callback(err, mimetype._lookup(extOrType));
-			  });
-			  return;
-		  }
-		  else {
-		    // sync
-		    mimetype._parseSystemTypes(filenames);
-		    return mimetype._lookup(extOrType);
-		  }
-		}
-		var r = mimetype._lookup(extOrType);
-		return callback ? callback(null, r) : r;
-	},
-	
-	_lookup: function(extOrType) {
-	  // look up type based on extension, or extension based on type
-		extOrType = extOrType.toLowerCase();
-		if (extOrType.indexOf('/') === -1) {
-			if (extOrType.charAt(0) === '.')
-				extOrType = extOrType.substr(1);
-			return mimetype.types[extOrType];
-		}
-		else {
-			var exts = [];
-			for (var k in mimetype.types) {
-				if (mimetype.types[k] === extOrType)
-					exts.push(k);
-			}
-			return exts;
-		}
-	}
-}
-
-
-/** Expose handler on path for GET (and implicitly also HEAD) */
-GLOBAL.GET = function(path, handler){
-	routes.GET.push(new Route(path, handler))
-	return handler
-}
-/** Expose handler on path for POST */
-GLOBAL.POST = function(path, handler){
-	routes.POST.push(new Route(path, handler))
-	return handler
-}
-/** Expose handler on path for PUT */
-GLOBAL.PUT = function(path, handler){
-	routes.PUT.push(new Route(path, handler))
-	return handler
-}
-/** Expose handler on path for DELETE */
-GLOBAL.DELETE = function(path, handler){
-	routes.DELETE.push(new Route(path, handler))
-	return handler
-}
-/** Expose handler on path for DELETE */
-GLOBAL.OPTIONS = function(path, handler){
-	routes.OPTIONS.push(new Route(path, handler))
-	return handler
-}
-
-/** Expose handler on path for multiple methods */
-exports.expose = function(methods, path, handler){
-	for (var method in methods)
-		GLOBAL[method] && GLOBAL[method](path, handler)
-	return handler
-}
-
-
-/** Handler which takes care of requests for files */
-function staticFileHandler(params, req, res) {
-	var server = this;
-	var notfoundCb = function() {
-		server.debug && sys.debug('[oui] "'+req.filename+'" does not exist')
-		res.sendError(404, 'File not found', 'Nothing found at '+req.path, null)
-	}
-
-	if (!req.filename)
-		return notfoundCb();
-
-	fs.stat(req.filename, function(err, stats) {
-	  if (err) return notfoundCb();
-		if (stats.isFile()) {
-			res.sendFile(req.filename, null, stats);
-		}
-		else if (server.indexFilenames && stats.isDirectory()) {
-			server.debug && sys.debug(
-				'[oui] trying server.indexFilenames for directory '+req.filename);
-			var _indexFilenameIndex = 0;
-			var tryNextIndexFilename = function() {
-				var name = server.indexFilenames[_indexFilenameIndex++];
-				if (!name) {
-					sys.debug('indexFilenames END')
-					notfoundCb();
-					return;
-				}
-				var filename = path.join(req.filename, name);
-				sys.debug('try '+filename)
-				fs.stat(filename, function(err, stats2) {
-				  if (err || !stats2.isFile())
-				    tryNextIndexFilename();
-					else
-					  res.sendFile(filename, null, stats2);
-				});
-			}
-			tryNextIndexFilename();
-		}
-		else {
-			server.debug && sys.debug('[oui] "'+req.url.pathname+
-			  '" is not a readable file.'+' stats => '+JSON.stringify(stats));
-			res.sendError(404, 'Unable to handle file',
-				sys.inspect(req.url.pathname)+' is not a readable file');
-		}
-	});
-}
-exports.staticFileHandler = staticFileHandler
-
-// Shorthand empty handler
-exports.noopHandler = function(){ return false; }
