@@ -1,6 +1,7 @@
 function AccessPoint(){
 	this._urlindex = -1;
 }
+oui.AccessPoint = AccessPoint;
 AccessPoint.URLS = [
 	'http://dropular.hunch.se:8080',
 	'http://ap-001.dropular.hunch.se:8080',
@@ -8,16 +9,16 @@ AccessPoint.URLS = [
 	'http://dropular.hunch.se'
 ];
 
-mix(AccessPoint, EventEmitter, function(P) {
-	P.url = function() {
+oui.mixin(AccessPoint.prototype, oui.EventEmitter.prototype, {
+	url: function() {
 		if (this._urlindex === -1) // first call
 			this.next();
 		return AccessPoint.URLS[this._urlindex];
-	}
+	},
 	
 	// returns true if moved on to a untested ap, false if wrapped around
 	// and restarting with first ap.
-	P.next = function() {
+	next: function() {
 		if (!this.isSetup)
 			this.setup();
 		
@@ -55,9 +56,9 @@ mix(AccessPoint, EventEmitter, function(P) {
 		this.emit('change');
 		
 		return true;
-	}
+	},
 	
-	P.setup = function() {
+	setup: function() {
 		if (window.OUI_AP) {
 			AccessPoint.URLS = $.isArray(window.OUI_AP) ? window.OUI_AP : [window.OUI_AP];
 		}

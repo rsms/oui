@@ -3,6 +3,9 @@ var sys = require('sys')
    ,fs = require('fs')
    ,util = require('./util')
    ,jsmin = require('./builder/jsmin')
+   ,jslint = require('./builder/jslint')
+   ,sass = require('./builder/sass')
+   ,less = require('./builder/less')
 
 require('./std-additions');
 
@@ -10,6 +13,8 @@ require('./std-additions');
 
 const HUNK_CSS_START = /[\n\r\t ]*<style[^>]+type=\"text\/css\"[^>]*>/img
      ,HUNK_CSS_END = '</style>'
+     ,HUNK_SASS_START = /[\n\r\t ]*<style[^>]+type=\"text\/sass\"[^>]*>/img
+     ,HUNK_SASS_END = HUNK_CSS_END
      ,HUNK_JS_START = /[\n\r\t ]*<script[^>]+type=\"text\/javascript\"[^>]*>/img
      ,HUNK_JS_END = '</script>';
 
@@ -166,9 +171,12 @@ mixin(Product.prototype, {
   output: function(callback) {
     if (!this.builder.force && !this.dirty) {
       this.builder.log('skipping up-to-date '+this.filename, 2);
-      if (callback) callback();
+      if (callback) callback(null, false);
       return;
     }
+    
+    // 2nd arg wrote=true
+    if (callback) { var _cb=callback; callback=function(err){_cb(err, true);}; }
     
     this.builder.log('writing '+this.filename, 2);
     var self = this;
@@ -216,13 +224,35 @@ function Source(builder, filename, relname, content) {
   this.filename = filename;
   this.relname = relname;
   this.content = content;
-  this.type = path.extname(filename).substr(1).toLowerCase();
+  this.type = this.inputType = path.extname(filename).substr(1).toLowerCase();
+  if (this.inputType === 'sass' || this.inputType === 'less') this.type = 'css'; // todo: DRY
   this.products = []; // all products which are build using this source
   if (filename)
     this.compiled = filename.lastIndexOf('.min.js') === filename.length-7;
 }
 mixin(Source.prototype, statable);
 mixin(Source.prototype, {
+  get dirty() {
+    if (this._dirty !== undefined)
+      return this._dirty;
+    if (!this.stats || !this.stats.mtime)
+      return this._dirty = true;
+    for (var i=0;i<this.products.length;i++) {
+      if (this.products[i].dirty)
+        return this._dirty = true;
+    }
+    return this._dirty = false;
+  },
+  
+  get name() {
+    return this._name ||
+      (this._name = this.relname.replace(/(?:\.min|)\.[^\.]+$/, '').replace(/\/+/,'.'));
+  },
+  
+  get domname() {
+    return this.name.replace(/\./g, '-');
+  },
+  
   /**
    * Demux (split) a source into possibly multiple sources, appended to
    * <sources>
@@ -245,7 +275,9 @@ mixin(Source.prototype, {
           addsource = function(type, hunk) {
             var source = new self.constructor(self.builder, 
               self.filename, self.relname, hunk);
-            source.type = type;
+            source.type = source.inputType = type;
+            if (source.inputType === 'sass' || source.inputType === 'less')
+              source.type = 'css'; // todo: DRY
             source.stats = self.stats;
             sources.push(source);
             self.builder.log('extracted '+source+' from '+self, 2);
@@ -256,30 +288,12 @@ mixin(Source.prototype, {
       content = extract_hunks(content, HUNK_JS_START, HUNK_JS_END,function(h){
         addsource('js', h);
       });
+      content = extract_hunks(content, HUNK_SASS_START, HUNK_SASS_END,function(h){
+        addsource('sass', h);
+      });
       self.content = content;
       if (callback) callback();
     });
-  },
-  
-  get dirty() {
-    if (this._dirty !== undefined)
-      return this._dirty;
-    if (!this.stats || !this.stats.mtime)
-      return this._dirty = true;
-    for (var i=0;i<this.products.length;i++) {
-      if (this.products[i].dirty)
-        return this._dirty = true;
-    }
-    return this._dirty = false;
-  },
-  
-  get name() {
-    return this._name ||
-      (this._name = this.relname.replace(/(?:\.min|)\.[^\.]+$/, '').replace(/\/+/,'.'));
-  },
-  
-  get domname() {
-    return this.name.replace(/\./g, '-');
   },
   
   loadContent: function (store, callback) {
@@ -310,11 +324,15 @@ mixin(Source.prototype, {
    * Compile the source, if needed.
    */
   compile: function(callback) {
-    // only js, html & css sources can be compiled
-    if (this.type !== 'js' && this.type !== 'html' && this.type !== 'css') {
-      if (callback) callback();
-      return;
-    }
+    const COMPILERS = {
+      'js': this._compileJS,
+      'html': this._compileHTML,
+      'css': this._compileCSS, 'less': this._compileCSS,
+      'sass': this._compileSASS,
+    };
+    var compiler = COMPILERS[this.inputType];
+
+    if (!compiler) return callback && callback();
     
     // skip compilation of "*.min.js" ("compiled" files)
     if (this.compiled || this.filename.lastIndexOf('.min.js') === this.filename.length-7) {
@@ -333,28 +351,62 @@ mixin(Source.prototype, {
     
     this.builder.log('compiling '+this, 2);
     this.compiled = true;
-    
     var self = this;
     this.loadContent(true, function(err){
       if (!err) {
-        if (self.type === 'js') self._compileJS(callback);
-        else if (self.type === 'html') self._compileHTML(callback);
-        else if (self.type === 'css') self._compileCSS(callback);
+        compiler.call(self, callback);
       } else if (callback) {
         callback(err);
       }
     });
   },
   
-  _compileCSS: function(callback) {
-    this.content = this.content.replace(/#this/g, '#'+this.domname);
-    if (callback) callback();
+  _compileSASS: function(callback) {
+    var self = this, sassopt = {
+      content: this.content,
+      file: this.filename,
+    };
+    sass.render(sassopt, function(err, css){
+      if (!err) {
+        self.content = css;
+        self._compileCSS(callback);
+      } else if (callback) {
+        callback('SASS: '+err.message);
+      }
+    });
   },
   
+  _compileCSS: function(callback) {
+    this.content = this.content.replace(/#this/g, '#'+this.domname);
+    // LESS
+    var self = this,
+        lessParser = new less.Parser({ paths: [path.dirname(this.filename)] });
+    lessParser.parse(this.content, this.filename, function (err, tree) {
+      if (!err) {
+        try {
+          self.content = tree.toCSS();
+        } catch (e) {
+          err = e;
+          self.builder.log(e.stack, 2);
+        }
+      }
+      if (err && err.message) {
+        var file = err.filename || self.filename, line = err.lineno || '?';
+        if (line === '?') {
+          var m = /on line (\d+)/.exec(err.message);
+          if (m) line = parseInt(m[1]);
+        }
+        err = 'lessc: ('+file+':'+line+') '+err.message;
+        //sys.error('err => '+sys.inspect(err));
+      }
+      return callback && callback(err);
+    });
+  },
+
   _compileHTML: function(callback) {
     // oui:untangled
     var tangle, cl = this.content.length;
-    if (this.type === 'html' && this.name === 'index') {
+    if (this.name === 'index') {
       tangle = false;
     } else {
       this.content = this.content.replace(SOURCE_HTMLOPT_UNTANGLED_RE, '');
@@ -401,15 +453,16 @@ mixin(Source.prototype, {
   
   /// String rep
   toString: function() {
-    return 'Source('+this.type+', '+sys.inspect(this.name)+')';
+    return 'Source('+this.inputType+'('+this.type+'), '+sys.inspect(this.name)+')';
   }
 });
 
 // -------------------------------------------------------------------------
 
-const BUILDER_DEFAULT_SRCFILTER = /^[^\.].*\.(?:js|css|x?html?)$/i;
+const BUILDER_DEFAULT_SRCFILTER = /^[^\.].*\.(?:js|css|sass|less|x?html?)$/i;
 
 function Builder(srcDirs) {
+  process.EventEmitter.call(this);
   this.srcDirs = Array.isArray(srcDirs) || [];
   this.srcFilter = BUILDER_DEFAULT_SRCFILTER;
   this.productsDir = 'build';
@@ -419,6 +472,7 @@ function Builder(srcDirs) {
   this.logLevel = 1; // 0: only errors, 1: info and warnings, 2: debug
   this.force = false; // ignore timestamps
 }
+sys.inherits(Builder, process.EventEmitter);
 
 mixin(Builder.prototype, {
   log: function(msg, level) {
@@ -475,8 +529,8 @@ mixin(Builder.prototype, {
   // ----------
   
   collectSources: function(callback) {
-    this.log('Collecting', 1);
-    var self = this, eve, didAddStdlib = false;
+    this.log('--> Collecting', 2);
+    var self = this, eve;//, didAddStdlib = false;
     eve = fs.find({
       dirnames: this.srcDirs,
       filter: this.srcFilter,
@@ -484,12 +538,12 @@ mixin(Builder.prototype, {
     }, callback);
     eve.addListener('file', function(relpath, abspath, ctx){
       var source;
-      if (!didAddStdlib && self.stdlib && self.stdlibJSPath) {
+      /*if (!didAddStdlib && self.stdlib && self.stdlibJSPath) {
         source = new Source(self, self.stdlibJSPath, '');
         self.sources.push(source);
         source.stat(ctx.cl.handle());
         didAddStdlib = true;
-      }
+      }*/
       self.log('collect '+relpath, 2);
       source = new Source(self, abspath, relpath);
       self.sources.push(source);
@@ -498,7 +552,7 @@ mixin(Builder.prototype, {
   },
   
   demux: function(callback) {
-    this.log('Demuxing', 1);
+    this.log('--> Demuxing', 2);
     var self = this;
     this.forEachSource(function(source, cl){
       source.demux(self.sources, cl);
@@ -506,7 +560,7 @@ mixin(Builder.prototype, {
   },
   
   statProducts: function(callback) {
-    this.log('Stating products', 2);
+    this.log('--> Stating products', 2);
     this.setupProducts();
     this.forEachProduct(function(product, cl){
       product.stat(cl);
@@ -514,7 +568,7 @@ mixin(Builder.prototype, {
   },
   
   compile: function(callback) {
-    this.log('Compiling', 1);
+    this.log('--> Compiling', 2);
     this.forEachSource(function(source, cl){
       source.compile(cl);
     }, callback);
@@ -542,11 +596,15 @@ mixin(Builder.prototype, {
   },
   
   output: function(callback) {
-    this.log('Writing products to '+this.productsDir, 1);
+    var self = this;
+    this.log('--> Writing products to '+this.productsDir, 2);
     var rcb = new util.RCB(callback);
     rcb.open();
     this.forEachProduct(function(product, cl){
-      product.output(cl);
+      product.output(function(err, wrote){
+        if (wrote) self.log('> '+product.filename, 1);
+        cl(err);
+      });
     }, rcb);
     rcb.close();
   },
@@ -555,8 +613,9 @@ mixin(Builder.prototype, {
     var queue = new util.CallQueue(this, false, callback);
     queue.push([
       this.collectSources,
+      function(cl){ this.emit('collect'); cl(); },
       this.demux,
-      function(cl){ this.log('sources: '+this.sources.join('\n'), 2); cl(); },
+      function(cl){ this.log('Sources: '+this.sources.join('\n'), 2); cl(); },
       this.statProducts,
       this.compile,
       this._mkOutputDirs,

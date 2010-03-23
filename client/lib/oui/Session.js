@@ -7,7 +7,7 @@
  *
  * Session([[app, ]id])
  */
-function Session(app, id) {
+oui.Session = function(app, id) {
 	if (typeof app === 'string') {
 		id = app;
 		app = undefined;
@@ -31,11 +31,11 @@ function Session(app, id) {
 	}
 }
 
-mix(Session, EventEmitter, function(P){
+oui.mixin(oui.Session.prototype, oui.EventEmitter.prototype, {
 	// todo: rip out the ap-next-retry code and make a universal wrapper
 	//       e.g. ap.guard(mkreqfunc) -> promise
 
-	P._open = function(promise) {
+	_open: function(promise) {
 		var self = this;
 		var p1 = http.GET(this.ap.url()+'/session/establish', {sid: this.id}, {timeout:10000});
 		var req = p1.context;
@@ -64,9 +64,9 @@ mix(Session, EventEmitter, function(P){
 			}
 		});
 		return p1;
-	}
+	},
 	
-	P.open = function() {
+	open: function() {
 		var self = this;
 		var promise = new Promise(this);
 		promise.addErrback(function(ev, er) {
@@ -78,9 +78,9 @@ mix(Session, EventEmitter, function(P){
 		});
 		this._open(promise);
 		return promise;
-	}
+	},
 	
-	P.signOut = function() {
+	signOut: function() {
 		if (!this.user)
 			return;
 		console.log('signing out '+this.user.username);
@@ -92,9 +92,9 @@ mix(Session, EventEmitter, function(P){
 		}).addErrback(function(ev, er){
 			self.app.emitError('Sign out failed', self, er, ev);
 		});
-	}
+	},
 	
-	P.signIn = function(username, password) {
+	signIn: function(username, password) {
 		// pass_hash     = BASE16( SHA1( user_id ":" password ) )
 		// auth_response = BASE16( SHA1_HMAC( auth_nonce, pass_hash ) )
 		var self = this;

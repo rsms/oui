@@ -1,4 +1,4 @@
-function Promise(context){
+oui.Promise = function(context){
 	this.context = context;
 	this.result = null;
 	var self = this;
@@ -16,7 +16,7 @@ function Promise(context){
 	});
 }
 
-mix(Promise, EventEmitter, function(P){
+oui.mixin(oui.Promise.prototype, oui.EventEmitter.prototype, function(P){
 	P.addCallback = function(listener) {
 		var self = this;
 		this.on('success', function(){

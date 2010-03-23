@@ -7,8 +7,6 @@
  * See http://pajhome.org.uk/crypt/md5 for details.
  */
 
-var hash = {};(function(){
-
 /*
  * Configurable variables. You may need to tweak these to be compatible with
  * the server-side, but the defaults work in most cases.
@@ -347,17 +345,15 @@ function _rstrfin(r, rawOrRadix) {
 	return r;
 }
 
-hash.sha1 = function(data, rawOrRadix) {
+exports.sha1 = function(data, rawOrRadix) {
 	if (typeof data !== 'string')
 		throw new Error('first argument must be a string');
 	r = rstr_sha1(str2rstr_utf8(data));
 	return _rstrfin(r, rawOrRadix);
 }
-hash.sha1_hmac = function(key, data, rawOrRadix) {
+exports.sha1_hmac = function(key, data, rawOrRadix) {
 	if (typeof key !== 'string' || typeof data !== 'string')
 		throw new Error('first and second argument must be a string');
 	r = rstr_hmac_sha1(str2rstr_utf8(key), str2rstr_utf8(data))
 	return _rstrfin(r, rawOrRadix);
 }
-
-})();

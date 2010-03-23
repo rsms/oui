@@ -1,5 +1,4 @@
-ui = window.ui = {};
-
+var ui = exports;
 /**
  * Singleton modal (doh!) dialog.
  *

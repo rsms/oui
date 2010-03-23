@@ -40,7 +40,7 @@ else {
           value = source[k];
           if (target !== value)
             target[k] = value;
-        });
+        }
       }
     }
     return target;
@@ -198,7 +198,7 @@ exports.htmlesc = function(s, nl2br) {
 
 
 exports.EventEmitter = function() {};
-exports.mixin(exports.EventEmitter.prototype, {
+window.oui.mixin(exports.EventEmitter.prototype, {
 	addListener: function(type, once, listener) {
 		if (typeof once === 'function') {
 			listener = once;
@@ -242,6 +242,12 @@ exports.mixin(exports.EventEmitter.prototype, {
 		return this;
 	}
 });
+
+// capabilities
+exports.capabilities = {
+  cors: (window.XMLHttpRequest &&
+		((new XMLHttpRequest()).withCredentials !== undefined || window.XDomainRequest))
+};
 
 
 });

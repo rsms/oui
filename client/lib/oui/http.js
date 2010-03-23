@@ -1,27 +1,22 @@
 /*jslint browser: true, devel: true, laxbreak: true */
-var http = {};
 
-http.Response = function(xhr, request, data) {
+exports.Response = function(xhr, request, data) {
 	this.xhr = xhr;
 	this.request = request;
 	this.data = data;
 };
 
-http.Request = function(method, url) {
+exports.Request = function(method, url) {
 	this.method = method || 'GET';
 	this.url = url || '';
 	this.contentType = 'application/json'; // x-www-form-urlencoded
 };
 
-mix(http.Request, EventEmitter, function(P){
-	P.send = function(data, responseHandler, options) {
+oui.mixin(exports.Request, oui.EventEmitter, {
+	send: function(data, options, responseHandler) {
 		// args
-		if (typeof data === 'function') {
-			responseHandler = data;
-			data = undefined;
-		}
-		if (typeof responseHandler === 'object')
-			options = responseHandler;
+		if (typeof data === 'function') { responseHandler = data; data = undefined; }
+		else if (typeof options === 'function') { responseHandler = options; options = undefined; }
 		
 		// default options
 		var self = this;
@@ -32,10 +27,8 @@ mix(http.Request, EventEmitter, function(P){
 		};
 		
 		// add custom options
-		if (typeof options === 'object')
-			opts = $.extend(opts, options);
-		else
-			options = false;
+		if (typeof options === 'object') opts = $.extend(opts, options);
+		else options = false;
 		
 		// content-type
 		if ((opts.type === 'POST' || opts.type === 'PUT') && !opts.contentType && this.contentType)
@@ -51,12 +44,12 @@ mix(http.Request, EventEmitter, function(P){
 		
 		// todo: remove this now?
 		// _HAVE_XHR_ONERROR set?
-		if (http._HAVE_XHR_ONERROR === undefined) {
+		if (exports._HAVE_XHR_ONERROR === undefined) {
 			var xhr = jQuery.ajaxSettings.xhr();
-			http._HAVE_XHR_ONERROR = false;
+			exports._HAVE_XHR_ONERROR = false;
 			for (var k in xhr) {
 				if (k == 'onerror') {
-					http._HAVE_XHR_ONERROR = true;
+					exports._HAVE_XHR_ONERROR = true;
 					break;
 				}
 			}
@@ -64,7 +57,7 @@ mix(http.Request, EventEmitter, function(P){
 		}
 		
 		// if the client supports xhr.onerror, add event emitter
-		if (http._HAVE_XHR_ONERROR) {
+		if (exports._HAVE_XHR_ONERROR) {
 			opts.xhr = function() {
 				var xhr = jQuery.ajaxSettings.xhr();
 				xhr.onerror = function(ev, xhr) {
@@ -85,7 +78,7 @@ mix(http.Request, EventEmitter, function(P){
 				// error occured. the error callback will be called right after this
 				return;
 			}
-			var res = new http.Response(xhr, self, data);
+			var res = new exports.Response(xhr, self, data);
 			if (typeof responseHandler === 'function')
 				responseHandler(res);
 			if (options && typeof options.success === 'function')
@@ -93,7 +86,7 @@ mix(http.Request, EventEmitter, function(P){
 			self.emit('response', res);
 		};
 		opts.error = function(xhr, textStatus, error) {
-			var res = new http.Response(xhr, self);
+			var res = new exports.Response(xhr, self);
 			if (xhr && xhr.responseText && xhr.responseText.length) {
 				try {
 					res.data = $.secureEvalJSON(xhr.responseText);
@@ -126,25 +119,28 @@ mix(http.Request, EventEmitter, function(P){
 		this.xhr = $.ajax(opts);
 		
 		return this;
-	};
+	}
 });
 
-http.request = function(method, url) {
-	return new http.Request(method, url);
+exports.request = function(method, url, params, options, callback) {
+  if (typeof params === 'function') { callback = params; params = undefined; }
+  else if (typeof options === 'function') { callback = options; options = undefined; }
+	var req = new exports.Request(method, url);
+	if (callback) {
+	  req.addListener('error', function(ev, exc, res){
+	    callback(exc); callback = null;
+	  });
+  }
+	req.send(params, options, function(ev, exc, res){
+    callback(null, res); callback = null;
+  });
+	return req;
 };
 
-var _promisedRequest = function(method, url, params, options) {
-	var req = http.request(method, url);
-	var promise = new Promise(req);
-	req.addListener('error', function(ev, exc, res){ promise.emitError(exc, res); });
-	req.send(params, function(res){ promise.emitSuccess(res); }, options);
-	return promise;
+exports.GET = function(url, params, options, callback) {
+	return exports.request('GET', url, params, options, callback);
 };
 
-http.GET = function(url, params, options) {
-	return _promisedRequest('GET', url, params, options);
-};
-
-http.POST = function(url, params, options) {
-	return _promisedRequest('POST', url, params, options);
+exports.POST = function(url, params, options, callback) {
+	return exports.request('POST', url, params, options, callback);
 };

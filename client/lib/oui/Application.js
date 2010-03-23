@@ -1,11 +1,12 @@
 
 /** Application */
-oui.Application = function() {
-	this.capabilities = new Capabilities();
-	this.automaticallyPresentsErrors = false;
+exports.Application = function() {
+	this.automaticallyPresentsErrors = true;
 }
-oui.mixin(oui.Application.prototype, oui.EventEmitter.prototype, {
-	main: function(){
+oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
+	main: function(options){
+	  if (!(typeof options === 'object')) options = {};
+	  if (options.debug) oui.debug = true;
 		this.session = new Session(this);
 		this.emit('boot');
 		var self = this;
@@ -62,4 +63,4 @@ oui.mixin(oui.Application.prototype, oui.EventEmitter.prototype, {
 	}
 });
 
-oui.app = new oui.Application();
+oui.app = new exports.Application();
