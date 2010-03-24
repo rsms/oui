@@ -158,8 +158,12 @@ mixin(Product.prototype, {
       if (header && header.length !== 0)
         queue.push(function(cl){ fwriteall(fd, header, cl); });
       self.sources.forEach(function(source){
-        if (self.type !== 'html' || source.name !== 'index')
+        // index.html is taken care of by a separate mechanism
+        // "external" files are not included as they are used in other ways
+        var isIndexHtml = (self.type === 'html' && source.name === 'index');
+        if (!isIndexHtml && !source.isExternal) {
           queue.push(function(cl){ source.write(fd, cl); });
+        }
       });
       if (footer && footer.length !== 0)
         queue.push(function(cl){ fwriteall(fd, footer, cl); });
@@ -217,14 +221,14 @@ mixin(Product.prototype, {
 const SOURCE_DEMUXABLE_TYPE_RE = /^x?html?$/i;
 const SOURCE_JSOPT_UNTANGLED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:untangled/igm;
 const SOURCE_JSOPT_UNOPTIMIZED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:unoptimized/igm;
-const SOURCE_HTMLOPT_UNTANGLED_RE = /<\!--[\r\n\s]*oui:untangled/igm;
+const SOURCE_HTMLOPT_UNTANGLED_RE = /<\!--[\r\n\s]*oui:untangled[\s\r\n]*-->/igm;
 
 function Source(builder, filename, relname, content) {
-  this.builder = builder;
+  this.builder  = builder;
   this.filename = filename;
-  this.relname = relname;
-  this.content = content;
-  this.type = this.inputType = path.extname(filename).substr(1).toLowerCase();
+  this.relname  = relname;
+  this.content  = content;
+  this.type     = this.inputType = path.extname(filename).substr(1).toLowerCase();
   if (this.inputType === 'sass' || this.inputType === 'less') this.type = 'css'; // todo: DRY
   this.products = []; // all products which are build using this source
   if (filename)
@@ -246,11 +250,18 @@ mixin(Source.prototype, {
   
   get name() {
     return this._name ||
-      (this._name = this.relname.replace(/(?:\.min|)\.[^\.]+$/, '').replace(/\/+/,'.'));
+      (this._name = this.relname.replace(/(?:\.min|)\.[^\.]+$/g, '').replace(/\/+/g,'.'));
   },
   
   get domname() {
     return this.name.replace(/\./g, '-');
+  },
+  
+  // Indicates if the source is "external" and should not be included in product output.
+  get isExternal() {
+    // LESS and SASS files starting with "_" are included by other files.
+    const includableTypes = ['less', 'sass'];
+    return (includableTypes.indexOf(this.inputType) !== -1 && this.name.charAt(0) === '_');
   },
   
   /**
@@ -285,9 +296,11 @@ mixin(Source.prototype, {
       content = extract_hunks(content, HUNK_CSS_START, HUNK_CSS_END,function(h){
         addsource('css', h);
       });
-      content = extract_hunks(content, HUNK_JS_START, HUNK_JS_END,function(h){
-        addsource('js', h);
-      });
+      if (self.name !== 'index') {
+        content = extract_hunks(content, HUNK_JS_START, HUNK_JS_END,function(h){
+          addsource('js', h);
+        });
+      }
       content = extract_hunks(content, HUNK_SASS_START, HUNK_SASS_END,function(h){
         addsource('sass', h);
       });
@@ -430,7 +443,7 @@ mixin(Source.prototype, {
     
     if (tangle) {
       this.content = '__defm('+JSON.stringify(this.name)+
-        ', function(exports, __name, __html){'+
+        ', function(exports, __name, __html, __parent){'+
         this.content.replace(/[\r\n][\t ]*$/,'\n')+
         '});/*'+this.name+'*/\n';
     }

@@ -33,6 +33,12 @@ MemoryStore.prototype.find = function(sid) {
 	return session;
 }
 
+MemoryStore.prototype.findOrCreate = function(sid) {
+  var session = this.find(sid);
+  if (!session) session = this.create();
+  return session;
+}
+
 MemoryStore.prototype.findOrSendError = function(params, res, requireUser) {
 	if (!params.sid) return res.sendError(400, 'Missing sid in request');
 	var session = this.find(params.sid);

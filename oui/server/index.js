@@ -26,12 +26,12 @@ function stat2etag(s) {
 // request additions
 mixin(http.IncomingMessage.prototype, {
 	prepare: function() {
-		this.path = this.url
-		this.url = url.parse(this.url, true)
-		this.params = {}
+		this.path = this.url;
+		this.url = url.parse(this.url, true);
+		this.params = {};
 		// copy, not assign, query -> params
-		var m = this.url.query
-		for (var k in m) this.params[k] = m[k]
+		var m = this.url.query;
+		for (var k in m) this.params[k] = m[k];
 	},
 
 	// Returns true on success, otherwise a response has been sent.
@@ -174,16 +174,14 @@ mixin(http.IncomingMessage.prototype, {
 
 // request.filename
 http.IncomingMessage.prototype.__defineGetter__("filename", function(){
-	if (this._filename)
-		return this._filename
+	if (this._filename) return this._filename;
 	server = this.connection.server
-	if (typeof server.documentRoot !== 'string')
-		return this._filename = null
-	abspath = path.join(server.documentRoot, this.url.pathname || '')
-	abspath = path.normalize(abspath) // /x/y/../z --> /x/z
+	if (!server.documentRoot) return this._filename = null;
+	abspath = path.join(server.documentRoot, this.url.pathname || '');
+	abspath = path.normalize(abspath); // /x/y/../z --> /x/z
 	if (abspath.substr(0, server.documentRoot.length) === server.documentRoot)
-		return this._filename = abspath
-	return this._filename = null
+		return this._filename = abspath;
+	return this._filename = null;
 });
 http.IncomingMessage.prototype.__defineSetter__("filename", function(v) {
 	this._filename = String(v);
@@ -229,10 +227,9 @@ mixin(http.ServerResponse.prototype, {
 			var r = this.request
 			var s = '[oui] --> '+r.method+' '+r.path+
 				'\n  HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+
-				statusCode + ' ' + http.STATUS_CODES[statusCode]
-			for (var k in headers)
-				s += '\n  '+headers[k][0]+': '+headers[k][1]
-			sys.debug(s)
+				statusCode + ' ' + http.STATUS_CODES[statusCode];
+			for (var i=0,t; t = headers[i];i++) s += '\n  '+t[0]+': '+t[1];
+			sys.log(s);
 		}
 		this.started = true;
 		if (this.request.method === 'HEAD')
@@ -371,7 +368,7 @@ mixin(http.ServerResponse.prototype, {
 	    status = undefined;
 	  }
 		var obj = this.mkError(status, title, message, error);
-		this.request.connection.server.debug && sys.debug(
+		this.request.connection.server.debug && sys.log(
 			'[oui] sendError '+sys.inspect(obj.error));
 		this.sendObject(obj);
 	},
@@ -380,11 +377,13 @@ mixin(http.ServerResponse.prototype, {
 		if (etag) {
 			var nomatch = this.request.headers['if-none-match']
 			if (nomatch !== undefined) {
-				if (nomatch === '*') return 304
-				v = nomatch.split(RE_COMMA_WS)
+				if (nomatch === '*') return 304;
+				v = nomatch.split(RE_COMMA_WS);
 				for (var i in v) {
-					t = v[i].replace(RE_OUTER_DQUOTES,'')
-					if (t === etag) return 304
+				  v = v[i]; if (v && v.replace) {
+  					t = v.replace(RE_OUTER_DQUOTES,'');
+  					if (t === etag) return 304;
+  				}
 				}
 			}
 			var domatch = this.request.headers['if-match']
@@ -504,7 +503,7 @@ mixin(http.ServerResponse.prototype, {
 			// perform stat
 			fs.stat(abspath, function (error, stats) {
 			  if (error) {
-  				sys.puts('[oui] warn: failed to read '+sys.inspect(abspath)+
+  				sys.log('[oui] warn: failed to read '+sys.inspect(abspath)+
   				  '. '+error);
   				res.sendError(404, 'File not found', 'No file at "'+abspath+'"');
   				callback(error);
@@ -561,7 +560,7 @@ function requestHandler(req, res) {
 		dateStarted = (new Date()).getTime()
 		res.addListener('close', function(){
 			ms = ((new Date()).getTime() - dateStarted)
-			sys.debug('[oui] response finished (total time spent: '+ms+' ms)')
+			sys.log('[oui] response finished (total time spent: '+ms+' ms)')
 		})
 	}
 	req.response = res
@@ -572,13 +571,13 @@ function requestHandler(req, res) {
 
 	// log request
 	if (this.debug) {
-		var s = '[oui] <-- '+req.method+' '+req.path
+		var s = '[oui] <-- '+req.method+' '+req.path;
 		for (var k in req.headers)
 			s += '\n  '+k+': '+req.headers[k]
-		sys.debug(s)
+		sys.log(s);
 	}
 	else if (this.verbose) {
-		sys.puts('[oui] '+req.method+' '+req.path)
+		sys.log('[oui] '+req.method+' '+req.path);
 	}
 
 	try {
@@ -598,35 +597,44 @@ function requestHandler(req, res) {
 	}
 }
 
-// ------------------------------------------
+// ----------------------------------------------------------------------------
 // Basic user prototype
 
-exports.BasicUser = function(id){
-  this.id = id;
+exports.BasicUser = function(username){
+  this.username = username;
   this.pass_hash = '';
   this.email = '';
 }
+
+// The following methods MUST be implemeted for user objects:
+
+// Find a user by username
+exports.BasicUser.find = function(username, callback) {
+	callback(null, exports.BasicUser.map[username]);
+}
+// Generate a minimal representation to be stored persitently in the users session
+exports.BasicUser.prototype.sessionObject = function() {
+  return {username: this.username, email: this.email};
+}
+
+/* Example extension:
 exports.BasicUser.map = {};
 exports.BasicUser.create = function(properties, callback) {
   var user = new exports.BasicUser();
   mixin(user, properties);
-  if (user.id) exports.BasicUser.map[user.id] = user;
+  if (user.username) exports.BasicUser.map[user.username] = user;
 	callback(null, user);
 }
-exports.BasicUser.remove = function(id, callback) {
-  if (exports.BasicUser.map[id]) {
-    delete exports.BasicUser.map[id];
+exports.BasicUser.remove = function(username, callback) {
+  if (exports.BasicUser.map[username]) {
+    delete exports.BasicUser.map[username];
     callback(null, true);
   } else {
     callback(null, false);
   }
-}
-exports.BasicUser.find = function(id, callback) {
-	callback(null, exports.BasicUser.map[id]);
-}
-exports.BasicUser.prototype.sessionObject = function() {
-  return {id: this.id, email: this.email};
-}
+}*/
+
+// ----------------------------------------------------------------------------
 
 /**
  * Create a new OUI server.
@@ -731,15 +739,15 @@ exports.createServer = function() {
 exports.start = function(options) {
   var opt = {
     port: 80,
-    //addr, verbose, debug
+    //addr
+    // any other property is assigned to the server object
   };
   if (typeof options==='object') mixin(opt, options);
 	server = exports.createServer();
+	const skipKeys = {'port':1, 'addr':1, 'verbose':1};
+	Object.keys(opt).forEach(function(k){ if (!skipKeys[k]) server[k] = opt[k]; });
 	server.verbose = (opt.verbose === undefined || opt.verbose) ? true : false;
-	if (opt.debug !== undefined) server.debug = opt.debug;
-	if (opt.allowedOrigin) server.allowedOrigin = opt.allowedOrigin;
-	if (opt.documentRoot) server.documentRoot = opt.documentRoot;
 	server.listen(opt.port, opt.addr);
-	server.verbose && sys.puts('[oui] listening on '+(opt.addr || '*')+':'+opt.port);
+	server.verbose && sys.log('[oui] listening on '+(opt.addr || '*')+':'+opt.port);
 	return server;
 }

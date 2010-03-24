@@ -3,6 +3,7 @@
  * Oui client standard library.
  */
 window.oui = {};
+if (window.OUI_DEBUG) window.oui.debug = true;
 window.APP_VERSION = "{#APP_VERSION#}"; // todo: move to oui.app
 
 // sophisticated client?
@@ -58,7 +59,14 @@ window.__defm = function(name, root, html, fun) {
     html = null;
   }
   
-  if (!html) html = jQuery('#'+name.replace(/\./g, '-'));
+  if (!html) {
+    html = function(query){
+      if (!html._jQuery) {
+        html._jQuery = jQuery('#'+name.replace(/\./g, '-'));
+      }
+      return query ? html._jQuery.find(query).clone() : html._jQuery;
+    };
+  }
   
   var module = {}, namep = name.split('.'), 
       curr = root, n, i = 0, L = namep.length-1;
@@ -70,8 +78,8 @@ window.__defm = function(name, root, html, fun) {
     curr = curr[n];
   }
   
-  // this, exports, __name, __html
-  fun.call(module, module, name, html);
+  // this, exports, __name, __html, __parent
+  fun.call(module, module, name, html, curr);
   
   var mname = namep[i], parent = curr[mname];
   if (parent !== undefined) {
@@ -94,12 +102,8 @@ __defm('oui', window, function(exports, __name, __html){
 
 var EMPTYFUNC = function(){};
 
-// OUI_DEBUG can be set from location.hash if not set already
-if (exports.debug === undefined && window.location.hash.indexOf('OUI_DEBUG') !== -1)
-	exports.debug = true;
-
 /** The console interface */
-if (window.console === undefined || !exports.debug) {
+if (window.console === undefined || !window.oui.debug) {
 	window.console = {
 		log:EMPTYFUNC,
 		warn:EMPTYFUNC,
@@ -197,17 +201,16 @@ exports.htmlesc = function(s, nl2br) {
 }
 
 
-exports.EventEmitter = function() {};
+exports.EventEmitter = function() {
+};
 window.oui.mixin(exports.EventEmitter.prototype, {
 	addListener: function(type, once, listener) {
 		if (typeof once === 'function') {
 			listener = once;
 			once = false;
 		}
-		if (once)
-			$(this).once(type, listener);
-		else
-			$(this).bind(type, listener);
+		if (once) $(this.eventTarget || this).one(type, listener);
+		else $(this.eventTarget || this).bind(type, listener);
 		return this;
 	},
 	
@@ -216,7 +219,7 @@ window.oui.mixin(exports.EventEmitter.prototype, {
 	},
 	
 	removeListener: function(type, listener) {
-		$(this).unbind(type, listener);
+		$(this.eventTarget || this).unbind(type, listener);
 		return this;
 	},
 	
@@ -228,7 +231,7 @@ window.oui.mixin(exports.EventEmitter.prototype, {
 	},
 	
 	emitv: function(type, args) {
-		$(this).triggerHandler(type, args);
+		$(this.eventTarget || this).triggerHandler(type, args);
 		return this;
 	},
 	
@@ -238,7 +241,7 @@ window.oui.mixin(exports.EventEmitter.prototype, {
 		var metaargs = [];
 		for (var i=1;i<arguments.length;i++)
 			metaargs.push(arguments[i]);
-		$(this).trigger(type, metaargs);
+		$(this.eventTarget || this).trigger(type, metaargs);
 		return this;
 	}
 });
@@ -246,7 +249,8 @@ window.oui.mixin(exports.EventEmitter.prototype, {
 // capabilities
 exports.capabilities = {
   cors: (window.XMLHttpRequest &&
-		((new XMLHttpRequest()).withCredentials !== undefined || window.XDomainRequest))
+		((new XMLHttpRequest()).withCredentials !== undefined || window.XDomainRequest)),
+	webSocket: window.WebSocket && !window.WebSocket.__initialize
 };
 
 

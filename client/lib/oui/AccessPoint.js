@@ -93,6 +93,6 @@ oui.mixin(AccessPoint.prototype, oui.EventEmitter.prototype, {
 		var self = this;
 		this.isSetup = true;
 		this.setup = null;
-		setInterval(function(){ delete self.setup; }, 1); // next tick
+		setTimeout(function(){ delete self.setup; }, 1); // next tick
 	}
 });

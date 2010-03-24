@@ -2,99 +2,160 @@
  * Represents a client-server session.
  *
  * Events:
- *  - open () -- when the sessions is open
+ *  - open () -- when the session is open
  *  - userchange (previousUser) -- when authenticated user has changed
  *
  * Session([[app, ]id])
  */
-oui.Session = function(app, id) {
+exports.Session = function(app, id) {
 	if (typeof app === 'string') {
 		id = app;
 		app = undefined;
 	}
 	this.app = app;
-	this.id = id || cookie.get('sid');
-	this.ap = new AccessPoint();
+	this.id = id || oui.cookie.get('sid');
 	
-	if (oui.debug) {
-		this.on('userchange', function(prevUser){
+	if (console.debug) {
+	  if (!id && this.id) console.debug('loaded session id =>', this.id);
+		this.on('userchange', function(ev, prevUser){
 			if (this.user)
 				console.log('signed in '+this.user.username);
 			else if (prevUser && prevUser.username)
 				console.log('signed out '+prevUser.username);
 		});
-		this.ap.on('change', function(){
-			console.log('trying ap '+this.url());
-		}).on('connect', function(){
-			console.log('connected to ap '+this.url());
-		});
 	}
-}
+};
 
-oui.mixin(oui.Session.prototype, oui.EventEmitter.prototype, {
-	// todo: rip out the ap-next-retry code and make a universal wrapper
-	//       e.g. ap.guard(mkreqfunc) -> promise
+oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
 
-	_open: function(promise) {
-		var self = this;
-		var p1 = http.GET(this.ap.url()+'/session/establish', {sid: this.id}, {timeout:10000});
-		var req = p1.context;
-		if (promise._nretries === undefined)
-		 	promise._nretries = AccessPoint.URLS.length;
-		p1.addCallback(function(ev, res){
-			// todo: validate & sanitize response
-			self.id = res.data.sid;
-			var prevUser = self.user;
-			self.user = res.data.user || undefined; // object if authed
-			cookie.set('sid', self.id);
-			console.log('session established', self.id, res);
-			self.emit('open');
-			self.emit('userchange', prevUser);
-			promise.emitSuccess();
-		}).addErrback(function(ev, er){
-			console.log('failed to query ap '+self.ap.url(), ev, er);
-			promise._nretries--;
-			if (promise._nretries > 0) {
-				self.ap.next();
-				// trying next ap
-				setTimeout(function(){ self._open(promise); }, 1);
-			}
-			else {
-				promise.emitError(er);
-			}
-		});
-		return p1;
-	},
+  // Execute a remote function which is idempotent.
+  get: function(remoteName, params, callback) {
+    return this.exec('GET', remoteName, params, callback);
+  },
+  
+  // Execute a remote function which might alter the remote state.
+  post: function(remoteName, params, callback) {
+    return this.exec('POST', remoteName, params, callback);
+  },
+  
+  // ( String method, String remoteName, [Object params,] 
+  //   [function callback(Error err, Object result, Response response)] )
+  exec: function(method, remoteName, params, callback) {
+    if (typeof params === 'function') { callback = params; params = undefined; }
+    if (this.id) {
+      if (typeof params === 'object') {
+        if (!params.sid) {
+          // make a copy
+          var nparams = {sid: this.id};
+          oui.mixin(nparams, params);
+          params = nparams;
+        }
+      } else {
+        params = {sid: this.id};
+      }
+    }
+    var options = {}; // TODO: expose as set:able in exec function call
+    var self = this, action = function(cl){
+      var url = oui.backend.currentURL()+'/'+remoteName;
+      oui.http.request(method, url, params, options, cl);
+    }
+    this.emit('exec-send', remoteName);
+    oui.backend.retry(action, function(err, response) {
+      self.emit('exec-recv', remoteName);
+      if (callback) {
+        if (err) callback(err);
+        else callback(err, response.data, response);
+      }
+    });
+    return this;
+  },
 	
-	open: function() {
+	// Open the session
+	open: function(callback) {
 		var self = this;
-		var promise = new Promise(this);
-		promise.addErrback(function(ev, er) {
-			self.app.emitError({
+		var onerr = function(err){
+		  self.app.emitError({
 				message: 'Connection error',
 				description: 'Failed to connect to the dropular service. Please try again in a few minutes.',
-				data: {aps: AccessPoint.URLS}
-			}, self, er, ev);
+				data: {backends: oui.backend.backends, error: err}
+			}, self, err);
+			callback && callback(err);
+		};
+		this.get('session/establish', function(err, result) {
+		  if (err) return onerr(err);
+		  self.id = result.sid;
+		  oui.cookie.set('sid', self.id);
+			var prevUser = self.user;
+		  self.user = result.user || undefined; // object if authed
+			console.log('session established', self.id, result);
+			self.emit('open');
+			self.emit('userchange', prevUser);
+			return callback && callback();
 		});
-		this._open(promise);
-		return promise;
 	},
 	
-	signOut: function() {
-		if (!this.user)
-			return;
+	// Sign out the current user, if any
+	signOut: function(callback) {
+		if (!this.user) return callback && callback();
 		console.log('signing out '+this.user.username);
 		var self = this;
-		http.GET(this.ap.url()+'/session/sign-out', {sid: this.id}).addCallback(function(){
+		this.get('session/sign-out', function(err, result){
+		  if (err) {
+		    self.app.emitError('Sign out failed', self, err);
+		    return callback && callback(err);
+		  }
 			var prevUser = self.user;
 			delete self.user;
 			self.emit('userchange', prevUser);
-		}).addErrback(function(ev, er){
-			self.app.emitError('Sign out failed', self, er, ev);
+			callback && callback();
 		});
 	},
 	
-	signIn: function(username, password) {
+	// Sign in <username> authenticated with <password>
+	signIn: function(username, password, callback) {
+		// pass_hash     = BASE16( SHA1( user_id ":" password ) )
+		// auth_response = BASE16( SHA1_HMAC( auth_nonce, pass_hash ) )
+		var self = this, cb = function(err, result) {
+		  if (!err) return callback && callback(null, result);
+		  self.app && self.app.emitError({
+				message: 'Sing in failed',
+				description: 'Failed to sign in user "'+username+'"',
+				data: {username: username, result: result}
+			}, self, err);
+			callback && callback(err, result);
+		};
+		console.log('signing in '+username);
+		this.get('session/sign-in', {username: username}, function(err, result) {
+		  if (err) return cb(err);
+		  self._handleSignInChallange(result, password, cb);
+		});
+	},
+	
+	_handleSignInChallange: function(result, password, callback) {
+		var self = this;
+		console.log('got response from sign-in:', result);
+		if (!result.user || !result.nonce) {
+			return callback(new Error('Missing user_id and/or nonce in response (got: '+
+				$.toJSON(result)+')'), result);
+		}
+		var passHash = oui.hash.sha1(result.user.id + ":" + password),
+		    auth_response = oui.hash.sha1_hmac(result.nonce, passHash);
+		var params = {
+			username: result.user.username,
+			auth_response: auth_response
+		};
+		this.get('session/sign-in', params, function(err, result) {
+		  if (err) return callback && callback(err, result);
+		  // successfully signed in
+    	var prevUser = self.user;
+    	self.user = result.user;
+    	self.user.passHash = passHash; // cache passHash to be able to seamlessly switch backends
+    	self.emit('userchange', prevUser);
+    	callback && callback();
+		});
+	},
+	
+	/*OLD_signIn: function(username, password) {
 		// pass_hash     = BASE16( SHA1( user_id ":" password ) )
 		// auth_response = BASE16( SHA1_HMAC( auth_nonce, pass_hash ) )
 		var self = this;
@@ -107,7 +168,7 @@ oui.mixin(oui.Session.prototype, oui.EventEmitter.prototype, {
 			}, self, er, ev);
 		});
 		console.log('signing in '+username);
-		p1 = http.GET(this.ap.url()+'/session/sign-in', {sid: this.id, username: username});
+		p1 = oui.http.GET(this.ap.url()+'/session/sign-in', {sid: this.id, username: username});
 		p1.addCallback(function(ev, res) {
 			console.log('got response from sign-in:', res, 'ev:', ev);
 			if (!res.data.user_id || !res.data.nonce) {
@@ -123,12 +184,12 @@ oui.mixin(oui.Session.prototype, oui.EventEmitter.prototype, {
 				user_id: res.data.user_id,
 				auth_response: auth_response
 			};
-			p2 = http.GET(self.ap.url()+'/session/sign-in', params);
+			p2 = oui.http.GET(self.ap.url()+'/session/sign-in', params);
 			p2.addCallback(function(ev, res) {
 				// success!
 				var prevUser = self.user;
 				self.user = res.data.user;
-				self.user.passHash = pass_hash; // cache passHash to be able to seamlessly switch APs
+				self.user.passHash = pass_hash; // cache passHash to be able to seamlessly switch backends
 				self.emit('userchange', prevUser);
 				promise.emitSuccess(self.user);
 			}).addErrback(function(ev, exc, res){
@@ -138,6 +199,6 @@ oui.mixin(oui.Session.prototype, oui.EventEmitter.prototype, {
 			promise.emitError(exc, res);
 		});
 		return promise;
-	}
+	}*/
 
 });

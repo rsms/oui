@@ -11,10 +11,10 @@ jQuery.fn.centerOnScreen = function(phix) {
 		};
 		if (phix)
 			p.top = Math.ceil(p.top / 1.61803399);
-		q.offset(p);
+		q.css(p);
 	});
 };
 
 jQuery.fn.fillScreen = function() {
-	return this.offset({left:0,top:0}).width(window.innerWidth).height(window.innerHeight);
+	return this.css({left:0,top:0}).width(window.innerWidth).height(window.innerHeight);
 };

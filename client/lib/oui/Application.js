@@ -1,13 +1,13 @@
 
 /** Application */
 exports.Application = function() {
-	this.automaticallyPresentsErrors = true;
+	this.automaticallyPresentsErrors = false;
 }
 oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
-	main: function(options){
-	  if (!(typeof options === 'object')) options = {};
-	  if (options.debug) oui.debug = true;
-		this.session = new Session(this);
+	main: function(){
+	  if (this._mainCalled) throw new Error('main has already been invoked');
+	  this._mainCalled = true;
+		this.session = new oui.session.Session(this);
 		this.emit('boot');
 		var self = this;
 		$(function(){
@@ -15,6 +15,7 @@ oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
 			if (self.session)
 				self.session.open();
 		});
+		return this;
 	},
 	
 	/**
@@ -49,7 +50,7 @@ oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
 	},
 	
 	presentError: function(error) {
-		if (!ui.alert) return;
+		if (!oui.ui.alert) return;
 		var details;
 		if (oui.debug) {
 			details = (typeof error.data === 'object') ? error.data : {};
@@ -59,7 +60,7 @@ oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
 				event: error.event
 			});
 		}
-		return ui.alert.show(error.message, error.description, details);
+		return oui.ui.alert.show(error.message, error.description, details);
 	}
 });
 

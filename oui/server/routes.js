@@ -65,13 +65,13 @@ exports.Route = function(pat, handler) {
 		pat = String(pat);
 		if (pat.indexOf(':') === -1) {
 			this.path = new FixedStringMatch(pat);
-			//exports.debug && sys.debug(
+			//exports.debug && sys.log(
 			//	'[oui] route '+sys.inspect(pat)+' treated as absolute fixed-string match');
 		}
 		else {
 			var nsrc = pat.replace(/:[^/]*/g, '([^/]*)');
 			nsrc = '^'+nsrc+'$';
-			//exports.debug && sys.debug(
+			//exports.debug && sys.log(
 			//	'[oui] route '+sys.inspect(pat)+' compiled to '+sys.inspect(nsrc))
 			this.path = new RegExp(nsrc, 'i'); // case-insensitive by default
 			var param_keys = pat.match(/:[^/]*/g);

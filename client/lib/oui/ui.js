@@ -15,9 +15,7 @@ var ui = exports;
  */ 
 ui.modalOverlay = {
 	show: function() {
-		var overlay = $('modal-overlay');
-		overlay.fillScreen();
-		overlay.fadeIn(50);
+		$('modal-overlay').fillScreen().fadeIn(50);
 	},
 	hide: function() {
 		$('modal-overlay').fadeOut(50);
@@ -45,7 +43,7 @@ ui.modal = {
 			ctx.defaultButton = ctx.element.find('input[type=submit]');
 		if (ctx.cancelButton === undefined)
 			ctx.cancelButton = ctx.element.find('input[type=button]');
-		ctx.promise = new Promise(ctx);
+		ctx.promise = new oui.Promise(ctx);
 		
 		if (ctx.message)
 			ctx.element.find('.message').text(ctx.message);

@@ -1,4 +1,5 @@
 var fs = require('fs'),
+    sys = require('sys'),
     path = require('path');
 
 // Does nothing
@@ -8,7 +9,7 @@ exports.noop = function(){ return false; }
 exports.static = function(params, req, res) {
 	var server = this;
 	var notfoundCb = function() {
-		server.debug && sys.debug('[oui] "'+req.filename+'" does not exist');
+		server.debug && sys.log('[oui] "'+req.path+'" does not exist');
 		res.sendError(404, 'File not found', 'Nothing found at '+req.path, null);
 	}
 	if (!req.filename) return notfoundCb();
@@ -17,7 +18,7 @@ exports.static = function(params, req, res) {
 		if (stats.isFile()) {
 			res.sendFile(req.filename, null, stats);
 		} else if (server.indexFilenames && stats.isDirectory()) {
-			server.debug && sys.debug(
+			server.debug && sys.log(
 				'[oui] trying server.indexFilenames for directory '+req.filename);
 			var _indexFilenameIndex = 0;
 			// todo: cache known paths
@@ -28,7 +29,7 @@ exports.static = function(params, req, res) {
 					return;
 				}
 				var filename = path.join(req.filename, name);
-				//sys.debug('try '+filename);
+				//sys.log('try '+filename);
 				fs.stat(filename, function(err, stats2) {
 				  if (err || !stats2.isFile()) tryNextIndexFilename();
 					else res.sendFile(filename, null, stats2);
@@ -36,7 +37,7 @@ exports.static = function(params, req, res) {
 			}
 			tryNextIndexFilename();
 		} else {
-			server.debug && sys.debug('[oui] "'+req.url.pathname+
+			server.debug && sys.log('[oui] "'+req.url.pathname+
 			  '" is not a readable file.'+' stats => '+JSON.stringify(stats));
 			res.sendError(404, 'Unable to handle file',
 				sys.inspect(req.url.pathname)+' is not a readable file');
@@ -51,8 +52,8 @@ var hash = require('../hash');
 
 exports.session = {
   establish: function(params, req, res) {
-  	var sessions = req.connection.server.sessions.find(params.sid);
-  	if (!session) session = sessions.create();
+  	var sessions = req.connection.server.sessions,
+  	    session = sessions.findOrCreate(params.sid);
   	return {
   		sid: session.id,
   		user: session.data.user,
@@ -63,22 +64,19 @@ exports.session = {
   	// todo: time-limit the auth_nonce
   	// get session
   	var server = req.connection.server,
-  	    sessions = server.sessions.find(params.sid),
-  	    session = sessions.findOrSendError(params, res);
-  	if (!session) return;
+  	    session = server.sessions.findOrCreate(params.sid);
 
   	// did respond?
   	var user, success = false, nonce = session.data.auth_nonce
   	if (nonce) {
   		delete session.data.auth_nonce;
   		if (params.auth_response) {
-  			server.userPrototype.find(params.username, function(err, users){
+  			server.userPrototype.find(params.username, function(err, user){
   			  if (err) return res.sendError(err);
-  				if (users.length === 0) {
+  				if (!user) {
   					res.sendError(401, 'No such user');
   					return;
   				}
-  				var user = users[0];
   				// pass_hash     = BASE16( SHA1( user_id ":" password ) )
   				// auth_response = BASE16( SHA1_HMAC( auth_nonce, pass_hash ) )
   				var success = hash.sha1_hmac(nonce, user.pass_hash) == params.auth_response;
@@ -88,7 +86,7 @@ exports.session = {
   					res.sendObject({user: user});
   				}
   				else {
-  					res.sendError(401, 'Bad auth-response');
+  					res.sendError(401, 'Bad credentials');
   				}
   			});
   			return;
@@ -100,16 +98,15 @@ exports.session = {
   		return;
   	}
 
-  	server.userPrototype.find(params.username, function(err, users){
+  	server.userPrototype.find(params.username, function(err, user){
   	  if (err) return res.sendError(err);
   		if (session.data.auth_nonce) // delete previous
   			delete session.data.auth_nonce;
-  		if (users.length === 0) {
+  		if (!user) {
   			res.sendError(401, 'No such user');
   			return;
   		}
-  		var user = users[0],
-  		    nonce = hash.sha1_hmac(server.authNonceHMACKey || '?', ''+(new Date())); // todo
+  		var nonce = hash.sha1_hmac(server.authNonceHMACKey || '?', ''+(new Date())); // todo
   		session.data.auth_nonce = nonce;
   		res.sendObject({ nonce: nonce,  user: user });
   	});
@@ -118,7 +115,7 @@ exports.session = {
   signOut: function(params, req, res) {
   	if (!params.sid)
   		return res.sendError(400, 'Missing sid in request');
-  	var session = exports.sessions.find(params.sid);
+  	var session = req.connection.server.sessions.find(params.sid);
   	if (session && session.data.user)
   		delete session.data.user;
   	return '';

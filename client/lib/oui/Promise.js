@@ -1,3 +1,10 @@
+/*
+
+********** DEPRECATED ***********
+
+Please use the callback style instead. Promises will be out-phased from oui.js.
+
+*/
 oui.Promise = function(context){
 	this.context = context;
 	this.result = null;
@@ -16,8 +23,8 @@ oui.Promise = function(context){
 	});
 }
 
-oui.mixin(oui.Promise.prototype, oui.EventEmitter.prototype, function(P){
-	P.addCallback = function(listener) {
+oui.mixin(oui.Promise.prototype, oui.EventEmitter.prototype, {
+	addCallback: function(listener) {
 		var self = this;
 		this.on('success', function(){
 			return listener.apply(self.context || self, arguments);
@@ -25,23 +32,25 @@ oui.mixin(oui.Promise.prototype, oui.EventEmitter.prototype, function(P){
 		if (this.result === 'success')
 			listener.apply(this.context || this, this.resultArgs);
 		return this;
-	}
-	P.addErrback = function(listener) {
+	},
+	
+	addErrback: function(listener) {
 		this.on('error', function(){
 			return listener.apply(self.context || self, arguments);
 		});
 		if (this.result === 'error')
 			listener.apply(this.context || this, this.resultArgs);
 		return this;
-	}
+	},
 
-	P.emitSuccess = function() {
+	emitSuccess: function() {
 		var args = [];
 		for (var i=0;i<arguments.length;i++)
 			args.push(arguments[i]);
 		return this.emitv('success', args);
-	}	
-	P.emitError = function() {
+	},
+	
+	emitError: function() {
 		var args = [];
 		for (var i=0;i<arguments.length;i++)
 			args.push(arguments[i]);

@@ -12,18 +12,21 @@ exports.Request = function(method, url) {
 	this.contentType = 'application/json'; // x-www-form-urlencoded
 };
 
-oui.mixin(exports.Request, oui.EventEmitter, {
-	send: function(data, options, responseHandler) {
+oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
+
+  // Send the request
+	send: function(params, options, callback) {
 		// args
-		if (typeof data === 'function') { responseHandler = data; data = undefined; }
-		else if (typeof options === 'function') { responseHandler = options; options = undefined; }
+		if (typeof params === 'function') { callback = params; params = undefined; }
+		else if (typeof options === 'function') { callback = options; options = undefined; }
+		var self = this;
+		this.method = this.method.toUpperCase();
 		
 		// default options
-		var self = this;
 		var opts = {
 			type: this.method,
 			url: this.url,
-			data: data
+			context: this
 		};
 		
 		// add custom options
@@ -31,15 +34,15 @@ oui.mixin(exports.Request, oui.EventEmitter, {
 		else options = false;
 		
 		// content-type
-		if ((opts.type === 'POST' || opts.type === 'PUT') && !opts.contentType && this.contentType)
+		if ((this.method === 'POST' || this.method === 'PUT') && !opts.contentType && this.contentType)
 			opts.contentType = this.contentType;
 		
-		// empty undefined items
-		if (typeof opts.data === 'object') {
-			jQuery.each(opts.data, function(k, v) {
-				if (v === undefined)
-					opts.data[k] = '';
-			});
+		// add all non-undefined items in <params> to <opts.data>
+		if (typeof params === 'object') {
+		  opts.data = {};
+			jQuery.each(params, function(k,v){ if (v !== undefined) opts.data[k] = v; });
+		} else {
+		  opts.data = params;
 		}
 		
 		// todo: remove this now?
@@ -48,7 +51,7 @@ oui.mixin(exports.Request, oui.EventEmitter, {
 			var xhr = jQuery.ajaxSettings.xhr();
 			exports._HAVE_XHR_ONERROR = false;
 			for (var k in xhr) {
-				if (k == 'onerror') {
+				if (k === 'onerror') {
 					exports._HAVE_XHR_ONERROR = true;
 					break;
 				}
@@ -79,8 +82,8 @@ oui.mixin(exports.Request, oui.EventEmitter, {
 				return;
 			}
 			var res = new exports.Response(xhr, self, data);
-			if (typeof responseHandler === 'function')
-				responseHandler(res);
+			if (callback)
+			  callback(null, res);
 			if (options && typeof options.success === 'function')
 				options.success(xhr, textStatus);
 			self.emit('response', res);
@@ -90,8 +93,21 @@ oui.mixin(exports.Request, oui.EventEmitter, {
 			if (xhr && xhr.responseText && xhr.responseText.length) {
 				try {
 					res.data = $.secureEvalJSON(xhr.responseText);
+					if (res.data.error && res.data.error.stack)
+					  console.error('remote error ->', res.data.error.stack.join('\n  '));
 				} catch(e){}
 			}
+			if (callback) {
+			  if (!error) {
+			    if (res && res.data && res.data.error) {
+			      error = new Error('Remote error: '+
+			        (res.data.error.message || res.data.error.title));
+		      } else {
+		        error = new Error('Remote error');
+		      }
+		    }
+			  callback(error, res);
+		  }
 			if (options && typeof options.error === 'function')
 				options.error(xhr, textStatus, error, res);
 			self.emit('error', error || textStatus, res);
@@ -102,17 +118,8 @@ oui.mixin(exports.Request, oui.EventEmitter, {
 			self.emit('complete');
 		};
 		
-		// set expected response dataType from contentType
-		/*if (opts.dataType === undefined) {
-			if (opts.contentType.toLowerCase() == 'application/json')
-				opts.dataType = 'json';
-			else if (opts.contentType.toLowerCase() == 'text/javascript')
-				opts.dataType = 'jsonp';
-		}*/
-		
-		// add data
-		var meth = opts.type.toUpperCase();
-		if (opts.data && (meth === 'POST' || meth === 'PUT'))
+		// encode data
+		if (opts.data && (this.method === 'POST' || this.method === 'PUT') && this.contentType === 'application/json')
 			opts.data = $.toJSON(data);
 		
 		// send
@@ -126,14 +133,7 @@ exports.request = function(method, url, params, options, callback) {
   if (typeof params === 'function') { callback = params; params = undefined; }
   else if (typeof options === 'function') { callback = options; options = undefined; }
 	var req = new exports.Request(method, url);
-	if (callback) {
-	  req.addListener('error', function(ev, exc, res){
-	    callback(exc); callback = null;
-	  });
-  }
-	req.send(params, options, function(ev, exc, res){
-    callback(null, res); callback = null;
-  });
+	req.send(params, options, callback);
 	return req;
 };
 
@@ -141,6 +141,6 @@ exports.GET = function(url, params, options, callback) {
 	return exports.request('GET', url, params, options, callback);
 };
 
-exports.POST = function(url, params, options, callback) {
+exports.POST = function(url, params, data, options, callback) {
 	return exports.request('POST', url, params, options, callback);
 };
