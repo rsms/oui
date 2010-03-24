@@ -127,11 +127,11 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
 		console.log('signing in '+username);
 		this.get('session/sign-in', {username: username}, function(err, result) {
 		  if (err) return cb(err);
-		  self._handleSignInChallange(result, password, cb);
+		  self._handleSignInChallenge(result, password, cb);
 		});
 	},
 	
-	_handleSignInChallange: function(result, password, callback) {
+	_handleSignInChallenge: function(result, password, callback) {
 		var self = this;
 		console.log('got response from sign-in:', result);
 		if (!result.user || !result.nonce) {
