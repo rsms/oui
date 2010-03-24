@@ -30,8 +30,10 @@ exports.current = function() {
 
 exports.currentURL = function() {
 	var backend = exports.current();
-	return (backend.secure ? 'https://' : 'http://')+
+	var url = (backend.secure ? 'https://' : 'http://')+
 	  backend.host + ':' + backend.port;
+	if (backend.path) url += backend.path;
+	return url;
 };
 
 /**
@@ -157,14 +159,18 @@ exports.setup = function() {
   	}
   }
   
-  // make sure each backend specifies host and port
+  // sanitize backends
   for (var i=0,backend;backend=exports.backends[i];i++) {
     if (!backend.port) backend.port = 80;
     if (!backend.host) {
       throw new Error('inconsistency error in '+__name+
       ' -- backend without host specification');
     }
+    if (backend.path) backend.path = '/'+backend.path.replace(/^\/+|\/+$/g, '');
   }
+
+  // Freeze backends if possible
+  if (typeof Object.freeze === 'function') Object.freeze(exports.backends);
 
   console.debug('backends =>', exports.backends);
 }
