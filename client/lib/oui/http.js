@@ -120,7 +120,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
 		
 		// encode data
 		if (opts.data && (this.method === 'POST' || this.method === 'PUT') && this.contentType === 'application/json')
-			opts.data = $.toJSON(data);
+			opts.data = $.toJSON(opts.data);
 		
 		// send
 		this.xhr = $.ajax(opts);

@@ -27,6 +27,57 @@ GLOBAL.mixin = function(target) {
 };
 
 // -------------------------------------------------------------------------
+// Date
+
+mixin(Date, {
+  // timestamp should be in milliseconds since the epoch, UTC
+  fromUTCTimestamp: function(timestamp) {
+    return new Date(timestamp+(Date.timezoneOffset*60000));
+  },
+  get timezoneOffset() {
+    return Date._timezoneOffset || (Date._timezoneOffset = (new Date).getTimezoneOffset());
+  }
+});
+mixin(Date.prototype, {
+  get milliseconds() { return this.getMilliseconds() },
+  get seconds() { return this.getSeconds() },
+  get minutes() { return this.getMinutes() },
+  get hours() { return this.getHours() },
+  get day() { return this.getDate() },
+  get weekday() { return this.getDay() },
+  get month() { return this.getMonth() },
+  get year() { return this.getFullYear() },
+
+  get utcMilliseconds() { return this.getUTCMilliseconds() },
+  get utcSeconds() { return this.getUTCSeconds() },
+  get utcMinutes() { return this.getUTCMinutes() },
+  get utcHours() { return this.getUTCHours() },
+  get utcDay() { return this.getUTCDate() },
+  get utcWeekday() { return this.getUTCDay() },
+  get utcMonth() { return this.getUTCMonth() },
+  get utcYear() { return this.getUTCFullYear() },
+
+  toUTCTimestamp: function() {
+    return this.getTime()-(Date.timezoneOffset*60000);
+  },
+
+  toUTCComponents: function(){
+    with (this) { return [
+      getUTCFullYear(), getUTCMonth()+1, getUTCDate(), getUTCHours(),
+      getUTCMinutes(), getUTCSeconds(), getUTCMilliseconds()
+    ]}
+  }
+});
+
+/* Date additions test:
+var sys = require('sys'), assert = require('assert');
+var utcts = 1259431623345;
+var d = Date.fromUTCTimestamp(utcts);
+assert.equal(d.toISOString(), '2009-11-28T17:07:03.345Z');
+assert.equal(d.toUTCTimestamp(), utcts);
+*/
+
+// -------------------------------------------------------------------------
 // fs
 
 /**

@@ -52,69 +52,138 @@ var hash = require('../hash');
 
 exports.session = {
   establish: function(params, req, res) {
-  	var sessions = req.connection.server.sessions,
+  	var sessions = this.sessions,
   	    session = sessions.findOrCreate(params.sid);
+  	res.setHeader('Cache-Control', 'no-cache');
   	return {
   		sid: session.id,
   		user: session.data.user,
   	}
   },
-
-  signIn: function(params, req, res) {
-  	// todo: time-limit the auth_nonce
-  	// get session
-  	var server = req.connection.server,
-  	    session = server.sessions.findOrCreate(params.sid);
-
-  	// did respond?
-  	var user, success = false, nonce = session.data.auth_nonce
-  	if (nonce) {
-  		delete session.data.auth_nonce;
-  		if (params.auth_response) {
-  			server.userPrototype.find(params.username, function(err, user){
-  			  if (err) return res.sendError(err);
-  				if (!user) {
-  					res.sendError(401, 'No such user');
-  					return;
-  				}
-  				// pass_hash     = BASE16( SHA1( user_id ":" password ) )
-  				// auth_response = BASE16( SHA1_HMAC( auth_nonce, pass_hash ) )
-  				var success = hash.sha1_hmac(nonce, user.pass_hash) == params.auth_response;
-  				if (success) {
-  					user = user.sessionObject();
-  					session.data.user = user;
-  					res.sendObject({user: user});
-  				}
-  				else {
-  					res.sendError(401, 'Bad credentials');
-  				}
-  			});
-  			return;
-  		}
-  	}
-
+  
+  // Sanity checks and preparation before a GET or POST to signIn
+  _preSignIn: function(params, req, res) {
+    // Sanity check
+    if (!this.userPrototype) {
+      sys.log('[oui] session/signIn: ERROR: server.userPrototype is undefined, '+
+        'but is required by session handlers');
+      res.sendError(500, 'Internal error');
+      return true;
+    }
+    // 400 bad request if username is missing
   	if (!params.username) {
   		res.sendError(400, 'Missing username parameter');
-  		return;
-  	}
+  		return true;
+		}
+  	// no caching please
+  	res.setHeader('Cache-Control', 'no-cache');
+  },
+  
+  // Response checks and preparation after a GET or POST to signIn
+  _postSignInFindUser: function(params, req, res, err, user, session) {
+    // Error?
+    if (err) {
+	    if (this.debug)
+	      sys.log('[oui] session/signIn: failed to find user: '+(err.stack || err));
+	    res.sendError(err);
+	    return true;
+    }
+    // Bad user object?
+    if (!user || typeof user !== 'object') {
+	    if (this.debug)
+	      sys.log('[oui] session/signIn: no such user '+params.username);
+	    res.sendError(401, 'Bad credentials');
+	    return true;
+    }
+    // Custom authentication implementation?
+    if (typeof user.handleAuthRequest === 'function') {
+      // returns true if it took over responsibility
+      return user.handleAuthRequest(params, req, res, session);
+    }
+  },
 
+  // get challenge
+  GET_signIn: function(params, req, res) {
+    var self = this, session = server.sessions.findOrCreate(params.sid);
+    if (exports.session._preSignIn.call(this, params, req, res)) return;
+	  // Clear any "auth_nonce" in session
+  	if (session.data.auth_nonce) delete session.data.auth_nonce;
+  	// Find user
   	server.userPrototype.find(params.username, function(err, user){
-  	  if (err) return res.sendError(err);
-  		if (session.data.auth_nonce) // delete previous
-  			delete session.data.auth_nonce;
-  		if (!user) {
-  			res.sendError(401, 'No such user');
-  			return;
-  		}
-  		var nonce = hash.sha1_hmac(server.authNonceHMACKey || '?', ''+(new Date())); // todo
+  	  if (exports.session._postSignInFindUser.call(self, params, req, res, err, user, session)) return;
+  	  // Create and respond with challenge
+  		var nonce = hash.sha1_hmac(server.authNonceHMACKey || '?', String(new Date())); // todo
   		session.data.auth_nonce = nonce;
-  		res.sendObject({ nonce: nonce,  user: user });
-  	});
+  		// include username, as it's used to calculate passhash and might be 
+  		// MixEDcAse (depending on the application, usernames might be looked up
+  		// in a case-insensitive manner).
+  		res.sendObject({ nonce: nonce, username: user.username });
+    });
+  },
+  
+  // post response to previous challenge
+  POST_signIn: function(params, req, res) {
+  	// todo: time-limit the auth_nonce
+  	if (exports.session._preSignIn.call(this, params, req, res)) return;
+  	var self = this,
+        session = server.sessions.findOrCreate(params.sid),
+  	    success = false;
+  	// find user
+  	server.userPrototype.find(params.username, function(err, user){
+  	  if (exports.session._postSignInFindUser.call(self, params, req, res, err, user, session)) return;
+
+  	  // If "auth_nonce" isn't set in session, the client should have performed a GET
+    	if (!session.data.auth_nonce)
+    	  return res.sendError(400, 'Bad request: uninitialized session');
+
+  	  // Keep a local ref of nonce and remove it from the session.
+  	  var nonce = session.data.auth_nonce;
+  		delete session.data.auth_nonce;
+
+  		// Only proceed if the request contains "auth_response"
+  		if (params.auth_response) {
+  		  if (err) return res.sendError(err);
+			  if (user) {
+			    var success = false;
+			    // Check auth response
+			    if (typeof user.checkAuthResponse === 'function') {
+			      // Custom control implemented by user object
+			      success = user.checkAuthResponse(nonce, params.auth_response);
+			      if (success && success !== true) {
+			        // strictness reduces chance of unintentional mis-auth
+			        sys.log('[oui] session/signIn: ERROR: user.checkAuthResponse '+
+			          'returned a true value which is not the constant "true"'+
+			          ' -- aborting auth attempt');
+			        res.sendError(500, 'Internal error -- check server log for details');
+			        return;
+			      }
+			    } else if (user.passhash) {
+			      // Standard control:
+    				//   passhash     = BASE16( SHA1( username ":" password ) )    TODO: move -- does not belong here
+    				//   auth_response = BASE16( SHA1_HMAC( auth_nonce, passhash ) )
+    				success = (hash.sha1_hmac(nonce, user.passhash) === params.auth_response);
+  				}
+  				if (success) {
+  					session.data.user = user.sessionRepresentation;
+  					res.sendObject({user: user.authedRepresentation});
+  					if (server.debug)
+    				  sys.log('[oui] session/signIn: successfully authenticated user '+params.username);
+  					return;
+  				} else if (server.debug) {
+  				  sys.log('[oui] session/signIn: bad credentials for user '+params.username);
+  				}
+				}
+  		}
+  		
+			// If we got here, success == false
+			res.sendError(401, 'Bad credentials');
+  	}); //< User.find
   },
 
   signOut: function(params, req, res) {
   	if (!params.sid)
   		return res.sendError(400, 'Missing sid in request');
+  	res.setHeader('Cache-Control', 'no-cache');
   	var session = req.connection.server.sessions.find(params.sid);
   	if (session && session.data.user)
   		delete session.data.user;

@@ -78,6 +78,8 @@ function main(argv, options, callback) {
   
   var watchedSources = {}, isBuilding = false, build;
   
+  // TODO: watch for new files (watch directories)
+  
   var watcher = function(ev) {
     var builder = this,
         watchedFilenames = Object.keys(watchedSources),
@@ -108,7 +110,13 @@ function main(argv, options, callback) {
     })();}
   };
   
+  var buildCount = 0;
+  
   build = function() {
+    if (++buildCount > 1 && options.force) {
+      // only perform forcefull build the first time
+      delete options.force;
+    }
     var builder = mkbuilder(options, argv);
     if (!options.once) {
       builder.addListener('collect', watcher);

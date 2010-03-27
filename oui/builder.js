@@ -250,7 +250,11 @@ mixin(Source.prototype, {
   
   get name() {
     return this._name ||
-      (this._name = this.relname.replace(/(?:\.min|)\.[^\.]+$/g, '').replace(/\/+/g,'.'));
+      (this._name = this.relname
+        .replace(/(?:\.min|)\.[^\.]+$/g, '')
+        .replace(/\/+/g,'.')
+        .replace(/\.index$/, '')
+      );
   },
   
   get domname() {

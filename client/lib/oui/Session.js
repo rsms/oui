@@ -14,14 +14,12 @@ exports.Session = function(app, id) {
 	}
 	this.app = app;
 	this.id = id || oui.cookie.get('sid');
-	
+
 	if (console.debug) {
-	  if (!id && this.id) console.debug('loaded session id =>', this.id);
+	  if (!id && this.id)
+	    console.debug('[oui] session: loaded session id =>', this.id);
 		this.on('userchange', function(ev, prevUser){
-			if (this.user)
-				console.log('signed in '+this.user.username);
-			else if (prevUser && prevUser.username)
-				console.log('signed out '+prevUser.username);
+			console.debug('[oui] session <userchange>', prevUser, '-->', this.user);
 		});
 	}
 };
@@ -87,7 +85,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
 		  oui.cookie.set('sid', self.id);
 			var prevUser = self.user;
 		  self.user = result.user || undefined; // object if authed
-			console.log('session established', self.id, result);
+			console.log('[oui] session/open: established', self.id, result);
 			self.emit('open');
 			self.emit('userchange', prevUser);
 			return callback && callback();
@@ -97,7 +95,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
 	// Sign out the current user, if any
 	signOut: function(callback) {
 		if (!this.user) return callback && callback();
-		console.log('signing out '+this.user.username);
+		console.log('[oui] session/signOut: '+this.user.username);
 		var self = this;
 		this.get('session/sign-out', function(err, result){
 		  if (err) {
@@ -106,6 +104,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
 		  }
 			var prevUser = self.user;
 			delete self.user;
+			console.log('[oui] session/signIn: successfully signed out '+prevUser.username);
 			self.emit('userchange', prevUser);
 			callback && callback();
 		});
@@ -113,8 +112,8 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
 	
 	// Sign in <username> authenticated with <password>
 	signIn: function(username, password, callback) {
-		// pass_hash     = BASE16( SHA1( user_id ":" password ) )
-		// auth_response = BASE16( SHA1_HMAC( auth_nonce, pass_hash ) )
+		// passhash     = BASE16( SHA1( username ":" password ) )
+		// auth_response = BASE16( SHA1_HMAC( auth_nonce, passhash ) )
 		var self = this, cb = function(err, result) {
 		  if (!err) return callback && callback(null, result);
 		  self.app && self.app.emitError({
@@ -124,81 +123,86 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
 			}, self, err);
 			callback && callback(err, result);
 		};
-		console.log('signing in '+username);
+		console.log('[oui] session/signIn: signing in '+username);
 		this.get('session/sign-in', {username: username}, function(err, result) {
-		  if (err) return cb(err);
-		  self._handleSignInChallenge(result, password, cb);
+		  if (err) return cb(err, result);
+		  self._handleSignInChallenge(result, username, password, cb);
+		});
+	},
+  
+  // Special sign-in handlers used when server responds with {"expect": <key>}
+  // during sign-in. Replaces the role of `_handleSignInChallenge`.
+	specialSignInHandlers: {
+	  // Universal "legacy authentication" handler which will pass the password in
+	  // clear text.
+	  //
+	  // WARNING! -- This handler sends the password in clear text! Make sure to
+	  //             either remove this or to send the request in a secure
+	  //             connection. A rouge server could otherwise request the
+	  //             password and get it.
+	  //
+	  legacy_auth: function(result, username, password, callback) {
+  		var params = {
+  		  legacy_auth: true,
+  			username: username,
+  			password: password
+  		};
+  		this._requestSignIn(params, callback);
+  		// todo: cache new passhash to be able to seamlessly switch backends.
+    }
+	},
+	
+	_requestSignIn: function(params, callback) {
+	  var self = this;
+	  console.log('[oui] (session/sign-in) <-- ', params);
+		this.post('session/sign-in', params, function(err, result) {
+		  console.log('[oui] (session/sign-in) --> ', err, result);
+		  callback && callback(err, result);
+		  if (!err && result.user)
+		    self.setSignedInUser(result.user);
 		});
 	},
 	
-	_handleSignInChallenge: function(result, password, callback) {
+	_handleSignInChallenge: function(result, username, password, callback) {
 		var self = this;
-		console.log('got response from sign-in:', result);
-		if (!result.user || !result.nonce) {
-			return callback(new Error('Missing user_id and/or nonce in response (got: '+
+		console.log('[oui] session/signIn: got response from sign-in:', result);
+		if (result.expect) {
+		  console.log('[oui] session/signIn: server expects "'+result.expect+'"');
+		  var handler = this.specialSignInHandlers[result.expect];
+		  if (handler && typeof handler === 'function') {
+		    return handler.call(this, result, username, password, callback);
+	    } else {
+  			return callback(new Error('Unable to satisfy server expectation "'+
+  			  result.expect+'"'), result);
+	    }
+		} if (!result.username || !result.nonce) {
+			return callback(new Error('Missing "username" and/or "nonce" in response (got: '+
 				$.toJSON(result)+')'), result);
 		}
-		var passHash = oui.hash.sha1(result.user.id + ":" + password),
-		    auth_response = oui.hash.sha1_hmac(result.nonce, passHash);
+		// use result.username instead of username here since we need the actual,
+		// case-sensitive username to calculate the correct response.
+		var passhash = oui.hash.sha1(result.username + ":" + password),
+		    auth_response = oui.hash.sha1_hmac(result.nonce, passhash);
 		var params = {
-			username: result.user.username,
+			username: result.username,
 			auth_response: auth_response
 		};
-		this.get('session/sign-in', params, function(err, result) {
-		  if (err) return callback && callback(err, result);
-		  // successfully signed in
-    	var prevUser = self.user;
-    	self.user = result.user;
-    	self.user.passHash = passHash; // cache passHash to be able to seamlessly switch backends
-    	self.emit('userchange', prevUser);
-    	callback && callback();
+		this._requestSignIn(params, function(err, result) {
+		  // cache passhash to be able to seamlessly switch backends
+		  if (!err) result.user.passhash = passhash;
+		  callback && callback(err, result);
 		});
 	},
 	
-	/*OLD_signIn: function(username, password) {
-		// pass_hash     = BASE16( SHA1( user_id ":" password ) )
-		// auth_response = BASE16( SHA1_HMAC( auth_nonce, pass_hash ) )
-		var self = this;
-		var promise = new Promise(this), p1, p2;
-		promise.addErrback(function(ev, er){
-			self.app && self.app.emitError({
-				message: 'Sing in failed',
-				description: 'Failed to sign in user "'+username+'"',
-				data: {username: username}
-			}, self, er, ev);
-		});
-		console.log('signing in '+username);
-		p1 = oui.http.GET(this.ap.url()+'/session/sign-in', {sid: this.id, username: username});
-		p1.addCallback(function(ev, res) {
-			console.log('got response from sign-in:', res, 'ev:', ev);
-			if (!res.data.user_id || !res.data.nonce) {
-				promise.emitError(new Error(
-					'Missing user_id and/or nonce in response (got: '+
-					$.toJSON(res.data)+')'), res);
-				return;
-			}
-			var pass_hash = hash.sha1(res.data.user_id + ":" + password);
-			var auth_response = hash.sha1_hmac(res.data.nonce, pass_hash);
-			var params = {
-				sid: self.id,
-				user_id: res.data.user_id,
-				auth_response: auth_response
-			};
-			p2 = oui.http.GET(self.ap.url()+'/session/sign-in', params);
-			p2.addCallback(function(ev, res) {
-				// success!
-				var prevUser = self.user;
-				self.user = res.data.user;
-				self.user.passHash = pass_hash; // cache passHash to be able to seamlessly switch backends
-				self.emit('userchange', prevUser);
-				promise.emitSuccess(self.user);
-			}).addErrback(function(ev, exc, res){
-				promise.emitError(exc, res);
-			});
-		}).addErrback(function(ev, exc, res){
-			promise.emitError(exc, res);
-		});
-		return promise;
-	}*/
+	setSignedInUser: function(user) {
+	  if (typeof user !== 'object')
+  		throw new Error('Invalid argument: user is not an object');
+	  if (!user.username)
+  		throw new Error('Data inconsistency: Missing username in user argument');
+  	var prevUser = this.user;
+  	this.user = user;
+  	console.log('[oui] session/signIn: successfully signed in '+this.user.username);
+  	this.emit('userchange', prevUser);
+	}
 
 });
