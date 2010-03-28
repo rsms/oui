@@ -218,7 +218,7 @@ exports.start = function(options) {
 	server = exports.createServer();
 	const skipKeys = {'port':1, 'addr':1, 'verbose':1};
 	Object.keys(opt).forEach(function(k){ if (!skipKeys[k]) server[k] = opt[k]; });
-	server.verbose = (opt.verbose === undefined || opt.verbose) ? true : false;
+	server.verbose = (opt.verbose === undefined || opt.verbose || server.debug);
 	server.listen(opt.port, opt.addr);
 	server.verbose && sys.log('[oui] listening on '+(opt.addr || '*')+':'+opt.port);
 	return server;
