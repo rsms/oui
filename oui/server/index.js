@@ -228,11 +228,11 @@ exports.start = function(options) {
   };
   if (typeof options==='object') mixin(opt, options);
 	server = exports.createServer();
-	const skipKeys = {'port':1, 'addr':1, 'verbose':1};
+	const skipKeys = {port:1, addr:1, verbose:1};
 	Object.keys(opt).forEach(function(k){ if (!skipKeys[k]) server[k] = opt[k]; });
 	server.verbose = (opt.verbose === undefined || opt.verbose || server.debug);
 	server.listen(opt.port, opt.addr);
 	server.verbose && sys.log('['+module.id+'] listening on '+
-	  (opt.addr || '*')+':'+opt.port);
+	  (opt.addr || '0.0.0.0')+':'+opt.port);
 	return server;
 }
