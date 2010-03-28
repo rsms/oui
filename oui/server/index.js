@@ -210,8 +210,9 @@ exports.createServer = function() {
     this.on('GET', sessionPrefix+'/sign-in', handlers.session.GET_signIn);
     this.on('POST', sessionPrefix+'/sign-in', handlers.session.POST_signIn);
     this.on('GET', sessionPrefix+'/sign-out', handlers.session.signOut);
-    // Serve static files & pass any OPTIONS request to allow XSS lookup:
+    // Serve static files
     this.on('GET', /^.+/, 0, handlers.static);
+    // Pass any OPTIONS request to allow CORS lookup
     this.on('OPTIONS', /^.*/ , 0, handlers.noop);
   }
 
@@ -231,6 +232,7 @@ exports.start = function(options) {
 	Object.keys(opt).forEach(function(k){ if (!skipKeys[k]) server[k] = opt[k]; });
 	server.verbose = (opt.verbose === undefined || opt.verbose || server.debug);
 	server.listen(opt.port, opt.addr);
-	server.verbose && sys.log('[oui] listening on '+(opt.addr || '*')+':'+opt.port);
+	server.verbose && sys.log('['+module.id+'] listening on '+
+	  (opt.addr || '*')+':'+opt.port);
 	return server;
 }
