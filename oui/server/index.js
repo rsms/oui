@@ -223,7 +223,8 @@ exports.createServer = function() {
 exports.start = function(options) {
   var opt = {
     port: 80,
-    //addr
+    // addr
+    // sock
     // any other property is assigned to the server object
   };
   if (typeof options==='object') mixin(opt, options);
@@ -231,8 +232,11 @@ exports.start = function(options) {
 	const skipKeys = {port:1, addr:1, verbose:1};
 	Object.keys(opt).forEach(function(k){ if (!skipKeys[k]) server[k] = opt[k]; });
 	server.verbose = (opt.verbose === undefined || opt.verbose || server.debug);
-	server.listen(opt.port, opt.addr);
+	if (opt.sock)
+	  server.listen(opt.sock);
+	else
+	  server.listen(parseInt(opt.port), opt.addr);
 	server.verbose && sys.log('['+module.id+'] listening on '+
-	  (opt.addr || '0.0.0.0')+':'+opt.port);
+	  (opt.addr || '')+':'+opt.port);
 	return server;
 }
