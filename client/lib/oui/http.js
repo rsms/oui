@@ -21,22 +21,25 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
     else if (typeof options === 'function') { callback = options; options = undefined; }
     var self = this;
     this.method = this.method.toUpperCase();
-    
+
+    // TODO: validate this.url through a regexp since malformed host/port yields
+    //       hard-to-trace errors deep down in xhr mechanisms.
+
     // default options
     var opts = {
       type: this.method,
       url: this.url,
       context: this
     };
-    
+
     // add custom options
     if (typeof options === 'object') opts = $.extend(opts, options);
     else options = false;
-    
+
     // content-type
     if ((this.method === 'POST' || this.method === 'PUT') && !opts.contentType && this.contentType)
       opts.contentType = this.contentType;
-    
+
     // add all non-undefined items in <params> to <opts.data>
     if (typeof params === 'object') {
       opts.data = {};
@@ -44,7 +47,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
     } else {
       opts.data = params;
     }
-    
+
     // todo: remove this now?
     // _HAVE_XHR_ONERROR set?
     if (exports._HAVE_XHR_ONERROR === undefined) {
@@ -58,7 +61,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
       }
       delete xhr;
     }
-    
+
     // if the client supports xhr.onerror, add event emitter
     if (exports._HAVE_XHR_ONERROR) {
       opts.xhr = function() {
@@ -69,7 +72,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
         return xhr;
       };
     }
-    
+
     // set handlers here to avoid options to over-write them
     opts.beforeSend = function(xhr){
       if (options && typeof options.beforeSend === 'function')
@@ -117,15 +120,15 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
         options.complete(xhr, textStatus);
       self.emit('complete');
     };
-    
+
     // encode data
     if (opts.data && (this.method === 'POST' || this.method === 'PUT') && this.contentType === 'application/json')
       opts.data = $.toJSON(opts.data);
-    
+
     // send
     console.debug(__name+'.Request.prototype.send', opts);
     this.xhr = $.ajax(opts);
-    
+
     return this;
   }
 });

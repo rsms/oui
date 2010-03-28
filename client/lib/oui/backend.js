@@ -24,16 +24,16 @@ if (console.debug) {
 }
 
 exports.current = function() {
-	if (exports.currentIndex === -1) exports.next();
-	return exports.backends[exports.currentIndex];
+  if (exports.currentIndex === -1) exports.next();
+  return exports.backends[exports.currentIndex];
 };
 
 exports.currentURL = function() {
-	var backend = exports.current();
-	var url = (backend.secure ? 'https://' : 'http://')+
-	  backend.host + ':' + backend.port;
-	if (backend.path) url += backend.path;
-	return url;
+  var backend = exports.current();
+  var url = (backend.secure ? 'https://' : 'http://')+
+    backend.host + ':' + backend.port;
+  if (backend.path) url += backend.path;
+  return url;
 };
 
 /**
@@ -77,88 +77,88 @@ exports.retry = function(action, callback) {
 
 // Returns true if moved on to a untested backend, false if wrapped around.
 exports.next = function() {
-	if (exports.setup !== undefined) { exports.setup();exports.setup=undefined; }
+  if (exports.setup !== undefined) { exports.setup();exports.setup=undefined; }
 
-	// round-robin
-	exports.currentIndex++;
+  // round-robin
+  exports.currentIndex++;
 
-	// sanity check
-	if (exports.backends.length === 0) {
-		console.warn(__name+'.backends is empty');
-		return false;
-	}
+  // sanity check
+  if (exports.backends.length === 0) {
+    console.warn(__name+'.backends is empty');
+    return false;
+  }
 
-	// If the client does not support CORS, make sure we fall back to same-origin.
-	if (!oui.capabilities.cors) {
-		var backend, x = exports.currentIndex;
-		for (i=0; i<exports.backends.length; i++) {
-			if (x === exports.backends.length) x = 0;
-			backend = exports.backends[x];
-			if (backend.host === window.location.host && backend.port === window.location.port) {
-			  exports.currentIndex = x;
-			  break;
-			}
-		}
-	}
-	
-	// wrap around?
-	if (exports.currentIndex === exports.backends.length) {
-		// This most likely means "no internet connection" or
-		// "all servers down" since the last server is (should be) the
-		// fallback to same-origin
-		exports.currentIndex = 0;
-		exports.events.emit('reset');
-		exports.events.emit('change');
-		return false;
-	}
-	
-	exports.events.emit('change');
-	
-	return true;
+  // If the client does not support CORS, make sure we fall back to same-origin.
+  if (!oui.capabilities.cors) {
+    var backend, x = exports.currentIndex;
+    for (i=0; i<exports.backends.length; i++) {
+      if (x === exports.backends.length) x = 0;
+      backend = exports.backends[x];
+      if (backend.host === window.location.host && backend.port === window.location.port) {
+        exports.currentIndex = x;
+        break;
+      }
+    }
+  }
+
+  // wrap around?
+  if (exports.currentIndex === exports.backends.length) {
+    // This most likely means "no internet connection" or
+    // "all servers down" since the last server is (should be) the
+    // fallback to same-origin
+    exports.currentIndex = 0;
+    exports.events.emit('reset');
+    exports.events.emit('change');
+    return false;
+  }
+
+  exports.events.emit('change');
+
+  return true;
 };
 
 exports.setup = function() {
   // setup
   if (window.OUI_BACKEND) {
-  	exports.backends = $.isArray(window.OUI_BACKEND) ? window.OUI_BACKEND : [window.OUI_BACKEND];
+    exports.backends = $.isArray(window.OUI_BACKEND) ? window.OUI_BACKEND : [window.OUI_BACKEND];
   } else if (window.OUI_BACKENDS) {
-  	exports.backends = $.isArray(window.OUI_BACKENDS) ? window.OUI_BACKENDS : [window.OUI_BACKENDS];
+    exports.backends = $.isArray(window.OUI_BACKENDS) ? window.OUI_BACKENDS : [window.OUI_BACKENDS];
   }
   else {
-  	// if file:, prepend localhost with same ports
-  	var isFile = window.location.protocol === 'file:';
-  	var isLocal = isFile || window.location.hostname.match(/(?:\.local$|^(?:localhost|127\.0\.0\.*)$)/);
-  	if (isLocal) {
-  		var origBackends = exports.backends, localBackends, ports = {};
-  		var hostname = isFile ? 'localhost' : window.location.hostname;
-  		if (origBackends.length === 0) {
-  		  var p = window.location.port;
-  		  origBackends = [{host:'localhost', port:(!p||p===80 ? 8080 : p)}];
-  	  }
-  		localBackends = [0,0]; // first 2 args to array splice later on
-  		for (var i=0;i<origBackends.length;i++) {
-  			var backend = origBackends[i];
-  			var port = backend.port || 80;
-  			if (!ports[port]) { ports[port] = 1; // unique
-  				var b = {host:hostname};
-  				if (backend.port) b.port = backend.port;
-  				if (backend.secure !== undefined) b.secure = backend.secure;
-  				localBackends.push(b);
-  			}
-  		}
-  		if (localBackends.length > 2)
-  			Array.prototype.splice.apply(exports.backends, localBackends);
-  	}
-  	// add same-origin fallback
-  	else if (window.location.protocol !== 'file:') {
-  	  exports.backends.push({
-  	    host: window.location.host,
-  	    port: window.location.port||80,
-  	    secure: window.location.protocol.indexOf('https') !== -1
-  	  });
-  	}
+    // if file:, prepend localhost with same ports
+    var isFile = window.location.protocol === 'file:';
+    var isLocal = isFile || window.location.hostname.match(/(?:\.local$|^(?:localhost|127\.0\.0\.*)$)/);
+    if (isLocal) {
+      var origBackends = exports.backends, localBackends, ports = {};
+      var hostname = isFile ? 'localhost' : window.location.hostname;
+      if (origBackends.length === 0) {
+        var p = window.location.port;
+        origBackends = [{host:'localhost', port:(!p||p===80 ? 8080 : p)}];
+      }
+      localBackends = [0,0]; // first 2 args to array splice later on
+      for (var i=0;i<origBackends.length;i++) {
+        var backend = origBackends[i];
+        var port = backend.port || 80;
+        if (!ports[port]) { ports[port] = 1; // unique
+          var b = {host:hostname};
+          if (backend.port) b.port = backend.port;
+          if (backend.secure !== undefined) b.secure = backend.secure;
+          localBackends.push(b);
+        }
+      }
+      if (localBackends.length > 2)
+        Array.prototype.splice.apply(exports.backends, localBackends);
+    }
+    // add same-origin fallback
+    else if (window.location.protocol !== 'file:') {
+      exports.backends.push({
+        host: window.location.hostname,
+        port: window.location.port||80,
+        secure: window.location.protocol.indexOf('https') !== -1
+      });
+    }
   }
-  
+
   // sanitize backends
   for (var i=0,backend;backend=exports.backends[i];i++) {
     if (!backend.port) backend.port = 80;
