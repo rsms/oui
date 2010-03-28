@@ -232,6 +232,7 @@ exports.start = function(options) {
 	const skipKeys = {port:1, addr:1, verbose:1};
 	Object.keys(opt).forEach(function(k){ if (!skipKeys[k]) server[k] = opt[k]; });
 	server.verbose = (opt.verbose === undefined || opt.verbose || server.debug);
+	if (opt.addr.match(/^\*|0\.0\.0\.0|$/)) opt.addr = undefined;
 	if (opt.sock)
 	  server.listen(opt.sock);
 	else
