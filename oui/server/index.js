@@ -66,6 +66,20 @@ function requestHandler(req, res) {
     		sys.log(s);
   		});
 		})
+	} else if (this.verbose) {
+	  // Log a Common Logfile Format entry to stdout
+	  // remotehost rfc931 authuser [date] "request" status bytes
+	  res.addListener('end', function(){ process.nextTick(function(){
+	    sys.puts([
+	      req.connection.remoteAddress,
+        '-', // remote logname of the user // TODO
+        '-', // authed username // TODO
+        '['+(new Date()).toUTCString()+']',
+        '"'+req.method+' '+req.path+' HTTP/'+(req.httpVersion || '1.1')+'"',
+        res.status,
+        res.contentLength
+      ].join(' '));
+	  })});
 	}
 	req.response = res
 	res.request = req
@@ -83,9 +97,6 @@ function requestHandler(req, res) {
   		for (var k in req.headers) s += '\n  '+k+': '+req.headers[k];
   		sys.log(s);
   	});
-	}
-	else if (this.verbose) {
-		sys.log('[oui] '+req.method+' '+req.path);
 	}
 
 	try {
