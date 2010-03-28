@@ -237,6 +237,6 @@ exports.start = function(options) {
 	else
 	  server.listen(parseInt(opt.port), opt.addr);
 	server.verbose && sys.log('['+module.id+'] listening on '+
-	  (opt.addr || '')+':'+opt.port);
+	  (opt.addr || '0.0.0.0')+':'+opt.port);
 	return server;
 }
