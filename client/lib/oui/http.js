@@ -123,6 +123,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
       opts.data = $.toJSON(opts.data);
     
     // send
+    console.debug(__name+'.Request.prototype.send', opts);
     this.xhr = $.ajax(opts);
     
     return this;
