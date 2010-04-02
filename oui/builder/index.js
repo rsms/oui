@@ -445,7 +445,7 @@ mixin(Source.prototype, {
 
   _compileJS: function(callback) {
     // Tangle (disable with "oui:untangled")
-    var cl = this.content.length;
+    var cl = this.content.length, self = this;
     this.content = this.content.replace(SOURCE_JSOPT_UNTANGLED_RE, '');
     if (cl === this.content.length) {
       this.content = '__defm('+JSON.stringify(this.name)+
@@ -463,44 +463,45 @@ mixin(Source.prototype, {
         var problems = this._lintJS();
         if (problems) {
           // Build jslint report and pass it on to <callback>
-          sys.log(this.filename);
-          var errors = problems.errors;
-          //sys.debug(sys.inspect(errors, true, 10));
-          var msg = ['[jslint] '+errors.length+' errors in '+
-            cli.style(this.filename, 'yellow')+':'];
-          errors.forEach(function(e){
-            // format reason
-            var reason = e.raw.replace(/\{([^{}]*)\}/g, function (a, b) {
-              var r = e[b];
-              if (typeof r === 'string' || typeof r === 'number')
-                return cli.style(r, 'cyan');
-              return a;
-            });
-            // Get line context
-            var numLineContext = 2,
-                start = Math.max(0, e.line-1-numLineContext),
-                linesBefore = problems.lines.slice(start, start+numLineContext),
-                linesAfter = problems.lines.slice(e.line, e.line+numLineContext);
-            // oui-specific: remove __defm if first
-            if (linesBefore.length) {
-              linesBefore[0] = linesBefore[0].replace(
-                /^__defm\(".+",\s*function\([^\)]+\)\s*\{\s*/, '');
+          var msg, reason, warnings = [], errors = [];
+          // separate warnings from errors
+          problems.errors.forEach(function(e){
+            if (!e) return;
+            if (e.id === '(warning)') {
+              if (self.builder.logLevel > 0) {
+                // collect warnings unless logging disabled (--quiet flag).
+                warnings.push(e);
+              }
+            } else if (e.id) {
+              errors.push(e);
             }
-            // Build message
-            msg.push(
-            cli.style(
-              ' '+reason+' at offset '+e.character.toString()+
-              ' on '+cli.style('line '+e.line.toString(), 'yellow')+':'
-            , 'bg:black'));
-            msg.push(cli.style('  '+linesBefore.join('\n  '), 'grey'));
-            msg.push('  '+e.evidence);
-            msg.push(cli.style('  '+linesAfter.join('\n  '), 'grey'));
           });
-        
-          var err = new Error('jslint');
-          err.file = this.filename;
-          err.stack = msg.join('\n');
-          return callback(err);
+          if (errors.length) {
+            //sys.debug(sys.inspect(errors, true, 10));
+            msg = ['[jslint] '+errors.length+' errors in '+
+              cli.style(this.filename, 'yellow')+':'];
+            errors.forEach(function(e){
+              if (!e) return;
+              // format reason
+              self._lintJSFormatError(e, msg, problems.lines);
+            });
+            var err = new Error('jslint');
+            err.file = self.filename;
+            err.stack = msg.join('\n');
+            self.builder.hadErrors = true;
+            return callback(err);
+          } else if (warnings.length && !self.builder.hadErrors) {
+            warnings.forEach(function(e){
+              msg = [];
+              self._lintJSFormatError(e, msg, problems.lines, false);
+              msg[0] = cli.style(
+                '[jslint] '+
+                cli.style('warning' ,'yellow')+' at '+
+                cli.style(self.filename+':'+e.line, 'yellow')
+              ,'bg:black')+msg[0];
+              self.builder.log(msg.join('\n'), 1);
+            });
+          }
         }
       }
     }
@@ -519,6 +520,48 @@ mixin(Source.prototype, {
     }
 
     if (callback) callback();
+  },
+  
+  _lintJSFormatError: function(e, msg, lines, filenameOrFalseForNoPosition) {
+    var reason = e.reason, finfo;
+    if (e.raw) {
+      reason = e.raw.replace(/\{([^{}]*)\}/g, function (a, b) {
+        var r = e[b];
+        if (typeof r === 'string' || typeof r === 'number')
+          return cli.style(r, 'cyan');
+        return a;
+      });
+    }
+    reason = reason.replace(/\.$/, '');
+    // Get line context
+    var numLineContext = 2,
+        start = Math.max(0, e.line-1-numLineContext),
+        linesBefore = lines.slice(start, start+numLineContext),
+        linesAfter = lines.slice(e.line, e.line+numLineContext);
+    // oui-specific: remove __defm if first
+    if (linesBefore.length) {
+      linesBefore[0] = linesBefore[0].replace(
+        /^__defm\(".+",\s*function\([^\)]+\)\s*\{\s*/, '');
+    }
+    // Build message
+    if (typeof filenameOrFalseForNoPosition === 'string') {
+      finfo = ' at '+cli.style(filenameOrFalseForNoPosition+':'+e.line, 'yellow')+
+      ':'+e.character;
+    } else if (filenameOrFalseForNoPosition !== false) {
+      finfo = ' at offset '+e.character+' on '+cli.style('line '+e.line, 'yellow');
+    } else {
+      finfo = '';
+    }
+    if (cli.isColorTerminal) {
+      e.evidence = cli.style(e.evidence.substr(0, e.character), 'bg:black')+
+        cli.style(cli.style(e.evidence.substr(e.character, 1), 'bg:red'), 'white')+
+        cli.style(e.evidence.substr(e.character+1), 'bg:black');
+    }
+    msg.push(
+    cli.style(' '+reason+finfo+':', 'bg:black'));
+    msg.push(cli.style('  '+linesBefore.join('\n  '), 'grey'));
+    msg.push('  '+e.evidence);
+    msg.push(cli.style('  '+linesAfter.join('\n  '), 'grey'));
   },
   
   _lintJS: function() {

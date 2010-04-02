@@ -37,7 +37,7 @@ if (exports.isColorTerminal) {
     'bg:white'     : ['47', '49'],
   };
   exports.style = function(str, style) {
-    var s = styles[style];
+    var s = styles[style]; if (!s) return str;
     return '\033[' + s[0] + 'm' + str + '\033[' + s[1] + 'm';
   }
 } else {

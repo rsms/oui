@@ -1003,7 +1003,7 @@ var JSLINT = exports.JSLINT = (function () {
         };
     }
 
-    function warning(m, t, a, b, c, d) {
+    function warning(m, t, a, b, c, d, id) {
         var ch, l, w;
         t = t || nexttoken;
         if (t.id === '(end)') {  // `~
@@ -1012,7 +1012,7 @@ var JSLINT = exports.JSLINT = (function () {
         l = t.line || 0;
         ch = t.from || 0;
         w = {
-            id: '(error)',
+            id: id || '(warning)',
             raw: m,
             evidence: lines[l - 1] || '',
             line: l,
@@ -1042,7 +1042,7 @@ var JSLINT = exports.JSLINT = (function () {
     }
 
     function error(m, t, a, b, c, d) {
-        var w = warning(m, t, a, b, c, d);
+        var w = warning(m, t, a, b, c, d, '(error)');
         quit("Stopping, unable to continue.", w.line, w.character);
     }
 
@@ -1076,9 +1076,9 @@ var JSLINT = exports.JSLINT = (function () {
             }
             s = s.replace(/\t/g, tab);
             at = s.search(cx);
-            if (at >= 0) {
+            /*if (at >= 0) { // [RA] this warns for comments(!). Totally unnecessary.
                 warningAt("Unsafe character.", line, at);
-            }
+            }*/
             if (option.maxlen && option.maxlen < s.length) {
                 warningAt("Line too long.", line, s.length);
             }
@@ -2028,8 +2028,8 @@ loop:   for (;;) {
                     advance();
                     return token;
                 } else {
-                    error("Expected an identifier and instead saw '{a}'.",
-                            token, token.id);
+                    //error("Expected an identifier and instead saw '{a}'.",
+                    //        token, token.id);
                 }
             }
             while (rbp < nexttoken.lbp) {
@@ -2597,13 +2597,13 @@ loop:   for (;;) {
             }
             advance('}', t);
             indent = old_indent;
-        } /*else { // [RA] disabled enforcing of blocks
-            warning("Expected '{a}' and instead saw '{b}'.",
-                    nexttoken, '{', nexttoken.value);
+        } else { // [RA] disabled warnings about missing explicit blocks
+            /*warning("Expected '{a}' and instead saw '{b}'.",
+                    nexttoken, '{', nexttoken.value);*/
             noreach = true;
             a = [statement()];
             noreach = false;
-        }*/
+        }
         funct['(verb)'] = null;
         scope = s;
         inblock = b;
@@ -4334,9 +4334,10 @@ loop:   for (;;) {
         }
         nospace(prevtoken, token);
         if (typeof left === 'object') {
+            /* // [RA] default value 10 is widely standardised.
             if (left.value === 'parseInt' && n === 1) {
                 warning("Missing radix parameter.", left);
-            }
+            }*/
             if (!option.evil) {
                 if (left.value === 'eval' || left.value === 'Function' ||
                         left.value === 'execScript') {
@@ -4635,9 +4636,10 @@ loop:   for (;;) {
             nonadjacent(token, nexttoken);
         }
         doFunction(i);
+        /* // [RA] disabled since a common pattern is: for... item.forEach(function...
         if (funct['(loopage)'] && nexttoken.id !== '(') {
             warning("Be careful when making functions within a loop. Consider putting the function in a closure.");
-        }
+        }*/
         return this;
     });
 

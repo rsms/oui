@@ -634,17 +634,16 @@ Parser.prototype.educate = function(message) {
   }
 
   this.order.forEach(function(ordering) {
-    var what = ordering[0];
-    var opt = ordering[1];
+    var what = ordering[0], opt = ordering[1], spec, desc, prefix;
 
     if(what === 'text') {
       sys.error(this.wrap(opt));
       return;
     }
 
-    var spec = this.specs[opt];
-    process.stdio.writeError(indent + left[opt]); //TODO: justify this text
-    var desc = spec.desc;
+    spec = this.specs[opt];
+    prefix = indent + left[opt]; //TODO: justify this text
+    desc = spec.desc;
 
     if (Array.isArray(spec.def))
       var default_s = spec.def.join(', ');
@@ -660,7 +659,7 @@ Parser.prototype.educate = function(message) {
         }
     }
 
-    sys.error(this.wrap(desc, {
+    sys.error(prefix + this.wrap(desc, {
       width: this.width() - rightcol_start - 1,
       prefix: rightcol_start,
       leftoffs: rightcol_start-(left[opt].length+indent.length),
