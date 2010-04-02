@@ -534,7 +534,8 @@ mixin(Source.prototype, {
     }
     reason = reason.replace(/\.$/, '');
     // Get line context
-    var numLineContext = 2,
+    var charStr,
+        numLineContext = 2,
         start = Math.max(0, e.line-1-numLineContext),
         linesBefore = lines.slice(start, start+numLineContext),
         linesAfter = lines.slice(e.line, e.line+numLineContext);
@@ -553,9 +554,11 @@ mixin(Source.prototype, {
       finfo = '';
     }
     if (cli.isColorTerminal) {
-      e.evidence = cli.style(e.evidence.substr(0, e.character), 'bg:black')+
-        cli.style(cli.style(e.evidence.substr(e.character, 1), 'bg:red'), 'white')+
-        cli.style(e.evidence.substr(e.character+1), 'bg:black');
+      charStr = e.evidence.substr(e.character-1, 1);
+      if (charStr.length === 0) charStr = ' ';
+      e.evidence = cli.style(e.evidence.substr(0, e.character-1), 'bg:black')+
+        cli.style(cli.style(charStr, 'bg:red'), 'white')+
+        cli.style(e.evidence.substr(e.character), 'bg:black');
     }
     msg.push(
     cli.style(' '+reason+finfo+':', 'bg:black'));
