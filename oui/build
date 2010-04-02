@@ -6,7 +6,7 @@ var sys = require('sys')
    ,Builder = require('./builder').Builder
    ,trollop = require('./trollop');
 
-var basedir = exports.basedir = 
+var basedir = exports.basedir =
   path.dirname(path.dirname(fs.realpathSync(__filename)));
 
 function mkbuilder(options, srcDirs) {
@@ -40,7 +40,7 @@ function main(argv, options, callback) {
                     {short:'o', type:'string', def:'./build'}],
     ['output_name', 'Product(s) filename (excluding file extension).',
                     {short:'n', type:'string', def:'index'}],
-    ['optimize',    'Compiler optimization level [0-3].', 
+    ['optimize',    'Compiler optimization level [0-3].',
                     {short:'O', def:2, type:'int'}],
     ['once',        'Only build once (do not watch for changes) and exit.',
                     {short:'s'}],
@@ -56,16 +56,16 @@ function main(argv, options, callback) {
   options = trollop.options(argv, options, function(){
     // trollop parser initializer
   });
-  
+
   // inherit options
   if (typeof inoptions === 'object') {
     mixin(inoptions, options);
     options = inoptions;
   }
-  
+
   // strip away ["node", "script"]
   argv = argv.slice(2);
-  
+
   if (!callback){callback=function(err){
     if (err) {
       sys.error(stylize('build failed: ', 'red')+(err.stack || err));
@@ -75,11 +75,11 @@ function main(argv, options, callback) {
       if (options.once) process.exit(0);
     }
   }}
-  
+
   var watchedSources = {}, isBuilding = false, build;
-  
+
   // TODO: watch for new files (watch directories)
-  
+
   var watcher = function(ev) {
     var builder = this,
         watchedFilenames = Object.keys(watchedSources),
@@ -109,9 +109,9 @@ function main(argv, options, callback) {
       }
     })();}
   };
-  
+
   var buildCount = 0;
-  
+
   build = function() {
     if (++buildCount > 1 && options.force) {
       // only perform forcefull build the first time
@@ -129,7 +129,7 @@ function main(argv, options, callback) {
       builder.all(callback);
     }
   }
-  
+
   build();
 }
 

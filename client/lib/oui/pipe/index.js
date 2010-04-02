@@ -29,7 +29,7 @@ var Pipe = exports.pipe = function(id) {
 };
 
 oui.mixin(Pipe.prototype, oui.EventEmitter.prototype, {
-  
+
   // Send a message
   send: function(message, callback) {
     var self = this;

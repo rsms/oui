@@ -59,7 +59,7 @@ oui.mixin(exports.Transport.prototype, __parent.Transport.prototype, {
       this.options.path+ '/' + encodeURIComponent(this.options.channel)+
       '/websocket';
   },
-  
+
   _addConnectCallback: function(callback) {
     var self = this;
     var onopen = function(){ cleanup(); callback(); };

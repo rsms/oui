@@ -19,38 +19,38 @@ const HUNK_CSS_START = /[\n\r\t ]*<style[^>]+type=\"text\/css\"[^>]*>/img
      ,HUNK_JS_END = '</script>';
 
 function extract_hunks(content, startRe, endStr, hunksOrCb) {
-	var index = 0, m, p, hunk,
-	    hunksOrCbIsFun = (typeof hunksOrCb === 'function'),
-	    buf = '';
-	
-	while ((m = startRe.exec(content))) {
-	  if (   endStr === HUNK_JS_END 
-	      && content.substring(m.index, startRe.lastIndex).indexOf('src=') !== -1)
-	  {
-	    p = content.indexOf(endStr, startRe.lastIndex);
-	    if (p === -1) throw new Error('unable to find terminator ('+endStr+')');
-	    p = p+endStr.length;
-	    buf += content.substring(index, p);
-	    index = p;
-	    continue;
-	  }
-	  
-	  buf += content.substring(index, m.index); index = m.index;
-	  
-	  p = content.indexOf(endStr, startRe.lastIndex);
-	  if (p === -1) throw new Error('unable to find terminator ('+endStr+')');
-	  
-	  //sys.debug(' --> ['+m.index+'-'+startRe.lastIndex+')  ['+p+'-'+p+endStr.length+')');
-	  hunk = content.substring(startRe.lastIndex, p);
-	  if (hunk.trim().length) {
-  		if (hunksOrCbIsFun) hunksOrCb(hunk);
-  		else hunksOrCb.push(hunk);
-	  }
-	  
-	  index = p+endStr.length;
+  var index = 0, m, p, hunk,
+      hunksOrCbIsFun = (typeof hunksOrCb === 'function'),
+      buf = '';
+
+  while ((m = startRe.exec(content))) {
+    if (   endStr === HUNK_JS_END
+        && content.substring(m.index, startRe.lastIndex).indexOf('src=') !== -1)
+    {
+      p = content.indexOf(endStr, startRe.lastIndex);
+      if (p === -1) throw new Error('unable to find terminator ('+endStr+')');
+      p = p+endStr.length;
+      buf += content.substring(index, p);
+      index = p;
+      continue;
+    }
+
+    buf += content.substring(index, m.index); index = m.index;
+
+    p = content.indexOf(endStr, startRe.lastIndex);
+    if (p === -1) throw new Error('unable to find terminator ('+endStr+')');
+
+    //sys.debug(' --> ['+m.index+'-'+startRe.lastIndex+')  ['+p+'-'+p+endStr.length+')');
+    hunk = content.substring(startRe.lastIndex, p);
+    if (hunk.trim().length) {
+      if (hunksOrCbIsFun) hunksOrCb(hunk);
+      else hunksOrCb.push(hunk);
+    }
+
+    index = p+endStr.length;
   }
   buf += content.substr(index);
-	return buf;
+  return buf;
 }
 
 function fwriteall(fd, data, cb) {
@@ -128,7 +128,7 @@ mixin(Product.prototype, {
     }
     return this._dirty = false;
   },
-  
+
   _write: function(header, footer, callback) {
     var self = this,
         flags = process.O_CREAT | process.O_TRUNC | process.O_WRONLY;
@@ -171,20 +171,20 @@ mixin(Product.prototype, {
       queue.start();
     });
   },
-  
+
   output: function(callback) {
     if (!this.builder.force && !this.dirty) {
       this.builder.log('skipping up-to-date '+this.filename, 2);
       if (callback) callback(null, false);
       return;
     }
-    
+
     // 2nd arg wrote=true
     if (callback) { var _cb=callback; callback=function(err){_cb(err, true);}; }
-    
+
     this.builder.log('writing '+this.filename, 2);
     var self = this;
-    
+
     // index.html ?
     if (this.type === 'html') {
       for (var i=0,L=this.sources.length; i<L; i++) {
@@ -205,11 +205,11 @@ mixin(Product.prototype, {
         }
       }
     }
-    
+
     // continue writing all modules in this product
     this._write(null, null, callback);
   },
-  
+
   /// String rep
   toString: function() {
     return 'Product('+JSON.stringify(this.filename)+')';
@@ -247,7 +247,7 @@ mixin(Source.prototype, {
     }
     return this._dirty = false;
   },
-  
+
   get name() {
     return this._name ||
       (this._name = this.relname
@@ -256,18 +256,18 @@ mixin(Source.prototype, {
         .replace(/\.index$/, '')
       );
   },
-  
+
   get domname() {
     return this.name.replace(/\./g, '-');
   },
-  
+
   // Indicates if the source is "external" and should not be included in product output.
   get isExternal() {
     // LESS and SASS files starting with "_" are included by other files.
     const includableTypes = ['less', 'sass'];
     return (includableTypes.indexOf(this.inputType) !== -1 && this.name.charAt(0) === '_');
   },
-  
+
   /**
    * Demux (split) a source into possibly multiple sources, appended to
    * <sources>
@@ -288,7 +288,7 @@ mixin(Source.prototype, {
       var css = [],
           js = [],
           addsource = function(type, hunk) {
-            var source = new self.constructor(self.builder, 
+            var source = new self.constructor(self.builder,
               self.filename, self.relname, hunk);
             source.type = source.inputType = type;
             if (source.inputType === 'sass' || source.inputType === 'less')
@@ -312,7 +312,7 @@ mixin(Source.prototype, {
       if (callback) callback();
     });
   },
-  
+
   loadContent: function (store, callback) {
     if (this.content) {
       if (callback) callback(null, this.content);
@@ -329,14 +329,14 @@ mixin(Source.prototype, {
       }
     });
   },
-  
+
   write: function(fd, callback) {
     this.loadContent(false, function(err, content){
       if (!err) fwriteall(fd, content, callback);
       else if (callback) callback(err);
     });
   },
-  
+
   /**
    * Compile the source, if needed.
    */
@@ -350,7 +350,7 @@ mixin(Source.prototype, {
     var compiler = COMPILERS[this.inputType];
 
     if (!compiler) return callback && callback();
-    
+
     // skip compilation of "*.min.js" ("compiled" files)
     if (this.compiled || this.filename.lastIndexOf('.min.js') === this.filename.length-7) {
       this.builder.log('not compiling '+this+' (already compiled)', 2);
@@ -358,14 +358,14 @@ mixin(Source.prototype, {
       this.compiled = true;
       return;
     }
-    
+
     // skip compilation if not dirty
     if (!this.builder.force && !this.dirty) {
       this.builder.log('not compiling '+this+' (not dirty)', 2);
       if (callback) callback();
       return;
     }
-    
+
     this.builder.log('compiling '+this, 2);
     this.compiled = true;
     var self = this;
@@ -377,7 +377,7 @@ mixin(Source.prototype, {
       }
     });
   },
-  
+
   _compileSASS: function(callback) {
     var self = this, sassopt = {
       content: this.content,
@@ -392,7 +392,7 @@ mixin(Source.prototype, {
       }
     });
   },
-  
+
   _compileCSS: function(callback) {
     this.content = this.content.replace(/#this/g, '#'+this.domname);
     // LESS
@@ -429,34 +429,34 @@ mixin(Source.prototype, {
       this.content = this.content.replace(SOURCE_HTMLOPT_UNTANGLED_RE, '');
       tangle = cl === this.content.length;
     }
-    
+
     if (tangle) {
       this.content = '<module id='+JSON.stringify(this.domname)+'>\n    '+
         this.content.replace(/^[\r\n\s]+/, '').replace(/[\r\n]/gm, '\n    ').replace(/[\r\n\s]*$/, '\n')+
         '  </module>\n';
     }
-    
+
     if (callback) callback();
   },
-  
+
   _compileJS: function(callback) {
     // oui:untangled
     var tangle, cl = this.content.length;
     this.content = this.content.replace(SOURCE_JSOPT_UNTANGLED_RE, '');
     tangle = cl === this.content.length;
-    
+
     if (tangle) {
       this.content = '__defm('+JSON.stringify(this.name)+
         ', function(exports, __name, __html, __parent){'+
         this.content.replace(/[\r\n][\t ]*$/,'\n')+
         '});/*'+this.name+'*/\n';
     }
-    
+
     // oui:unoptimized
     var optimize, cl = this.content.length;
     this.content = this.content.replace(SOURCE_JSOPT_UNOPTIMIZED_RE, '');
     optimize = cl === this.content.length;
-    
+
     if (optimize && this.builder.optimize > 0) {
       var preSize = this.content.length;
       this.content = jsmin.jsmin('', this.content, this.builder.optimize);
@@ -464,10 +464,10 @@ mixin(Source.prototype, {
         Math.round((1.0-(parseFloat(this.content.length)/preSize))*100.0)+
         '% ('+(preSize-this.content.length)+' B) smaller', 2);
     }
-    
+
     if (callback) callback();
   },
-  
+
   /// String rep
   toString: function() {
     return 'Source('+this.inputType+'('+this.type+'), '+sys.inspect(this.name)+')';
@@ -503,7 +503,7 @@ mixin(Builder.prototype, {
       }
     }
   },
-  
+
   forEachSource: function(fun, callback) {
     var rcb;
     if (callback && callback instanceof util.RCB) rcb = callback;
@@ -513,7 +513,7 @@ mixin(Builder.prototype, {
       fun.call(this, this.sources[i], rcb.handle());
     rcb.close();
   },
-  
+
   forEachProduct: function(fun, callback) {
     var rcb;
     if (callback && callback instanceof util.RCB) rcb = callback;
@@ -524,7 +524,7 @@ mixin(Builder.prototype, {
       fun.call(this, this.products[types[i]], rcb.handle());
     rcb.close();
   },
-  
+
   setupProducts: function(){
     this.products = {};
     for (var i=0,L=this.sources.length;i<L;i++) {
@@ -542,9 +542,9 @@ mixin(Builder.prototype, {
       }
     }
   },
-  
+
   // ----------
-  
+
   collectSources: function(callback) {
     this.log('--> Collecting', 2);
     var self = this, eve;//, didAddStdlib = false;
@@ -567,7 +567,7 @@ mixin(Builder.prototype, {
       source.stat(ctx.cl.handle());
     });
   },
-  
+
   demux: function(callback) {
     this.log('--> Demuxing', 2);
     var self = this;
@@ -575,7 +575,7 @@ mixin(Builder.prototype, {
       source.demux(self.sources, cl);
     }, callback);
   },
-  
+
   statProducts: function(callback) {
     this.log('--> Stating products', 2);
     this.setupProducts();
@@ -583,14 +583,14 @@ mixin(Builder.prototype, {
       product.stat(cl);
     }, callback);
   },
-  
+
   compile: function(callback) {
     this.log('--> Compiling', 2);
     this.forEachSource(function(source, cl){
       source.compile(cl);
     }, callback);
   },
-  
+
   _mkOutputDirs: function(callback) {
     // mkdirs
     var dirnames = {}, types = Object.keys(this.products);
@@ -611,7 +611,7 @@ mixin(Builder.prototype, {
       callback();
     }
   },
-  
+
   output: function(callback) {
     var self = this;
     this.log('--> Writing products to '+this.productsDir, 2);
@@ -625,7 +625,7 @@ mixin(Builder.prototype, {
     }, rcb);
     rcb.close();
   },
-  
+
   all: function(callback) {
     var queue = new util.CallQueue(this, false, callback);
     queue.push([

@@ -45,11 +45,11 @@ mixin(http.ServerResponse.prototype, {
     if (len !== undefined) return Number(len);
     return 0;
   },
-  
+
   set contentLength(len) {
     this.setHeader('Content-Length', len);
   },
-  
+
   prepare: function() {
     var server = this.request.connection.server
     this.headers = [
@@ -64,7 +64,7 @@ mixin(http.ServerResponse.prototype, {
     this.allowedOrigin = server.allowedOrigin;
     patchWriteHead(this);
   },
-  
+
   indexOfHeader: function(name) {
     name = name.toLowerCase();
     var v = this.headers;
@@ -75,13 +75,13 @@ mixin(http.ServerResponse.prototype, {
     }
     return -1;
   },
-  
+
   // Get header, case-insensitive. Returns undefined if not found.
   getHeader: function(name) {
     var i = this.indexOfHeader(name);
     if (i !== -1) return this.headers[i][1];
   },
-  
+
   // Add or replace header
   setHeader: function(name, value) {
     var i = this.indexOfHeader(name);
@@ -284,7 +284,7 @@ mixin(http.ServerResponse.prototype, {
       var etag = stat2etag(s);
 
       if (!contentType)
-        contentType = mimetypes.lookup(path.extname(abspath)) 
+        contentType = mimetypes.lookup(path.extname(abspath))
           || 'application/octet-stream';
       res.headers.push(['Content-Type', contentType]);
       res.headers.push(['Last-Modified', s.mtime.toUTCString()]);

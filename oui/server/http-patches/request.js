@@ -148,7 +148,7 @@ mixin(http.IncomingMessage.prototype, {
     }
     res.close()
   },
-  
+
   // request.filename
   get filename() {
     var server = this.connection.server;

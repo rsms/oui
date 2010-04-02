@@ -10,7 +10,7 @@ const VERSION = "1.15";
 // Thrown by Parser in the event of a commandline error. Not needed if
 // you're using the Trollop:'options' entry.
 var CommandLineError = new Error('Command line error');
-  
+
 // Thrown by Parser if the user passes in '-h' or '--help'. Handled
 // automatically by Trollop#options.
 var HelpNeeded = new Error('Help Needed');
@@ -48,14 +48,14 @@ const TYPES = [].concat(FLAG_TYPES, SINGLE_ARG_TYPES, MULTI_ARG_TYPES);
 const INVALID_SHORT_ARG_REGEX = /[\d-]/
 
 function _flatten(arr) {
-	var fun = function(memo, value) {
-		if (Array.isArray(value))
-			value.reduce(fun, memo);
-		else
-			memo.push(value);
-		return memo;
-	};
-	return arr.reduce(fun, []);
+  var fun = function(memo, value) {
+    if (Array.isArray(value))
+      value.reduce(fun, memo);
+    else
+      memo.push(value);
+    return memo;
+  };
+  return arr.reduce(fun, []);
 }
 
 // The commandline parser. In typical usage, the methods in this class
@@ -144,7 +144,7 @@ var Parser = exports.Parser = function() {
 Parser.prototype.opt = function(name, _desc, _opts) {
   var desc = _desc || "";
   var opts = _opts || {};
-  
+
   if( name in this.specs )
     throw new Error("You already have an argument named '" + name + "'");
 
@@ -733,7 +733,7 @@ Parser.prototype._parse_float_parameter = function(param, arg) {
 
 Parser.prototype._parse_date_parameter = function(param, arg) {
   var parsed = Date.parse(param);
-  if(isNaN(parsed)) { 
+  if(isNaN(parsed)) {
     throw new Error("option '"+arg+"' needs a date");
   }
   else {
@@ -786,7 +786,7 @@ Parser.prototype._each_arg = function(args, callback) {
 
   while (i < args.length) {
     if(this.stop_words.indexOf(args[i]) !== -1) {
-      return remains.concat(args.slice(i)); 
+      return remains.concat(args.slice(i));
     }
 
     if( args[i].match(/^--$/) ) { // arg terminator

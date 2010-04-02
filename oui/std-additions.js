@@ -33,7 +33,7 @@ GLOBAL.mixin = function(target) {
 // - obj.name += 3 will fail
 // - obj.name = other will fail
 // - delete obj.name will fail
-// However, only simple types (strings, numbers, language constants) will be 
+// However, only simple types (strings, numbers, language constants) will be
 // truly immutable. Complex types (arrays, objects) will still be mutable.
 Object.defineConstant = function (obj, name, value, enumerable, deep) {
   Object.defineProperty(obj, name, {
@@ -176,7 +176,7 @@ fs.find = function(options, callback){
     opt.dirnames = opt.dirnames ? [opt.dirnames] : [];
   if (opt.dirnames.length === 0)
     throw new Error('no dirnames defined');
-    
+
   if (typeof opt.filter === 'function' && !(opt.filter instanceof RegExp)) {
     callback = opt.filter;
     opt.filter = undefined;
@@ -185,27 +185,27 @@ fs.find = function(options, callback){
     callback = opt.unbuffered;
     opt.unbuffered = undefined;
   }
-  
+
   if (opt.filter && !opt.filter.test)
     opt.filter.test = function(s){ return s === opt.filter; }
-  
+
   var cl = new util.RCB(callback);
-  
+
   if (!opt.unbuffered && callback) {
     var files = [], dirs = [];
     cl.addListener('file', function(relpath){ files.push(relpath); })
       .addListener('directory', function(relpath){ dirs.push(relpath); })
     cl.callback = function(err){ callback(err, files, dirs); };
   }
-  
+
   cl.open();
-  
+
   for (var i=0;i<opt.dirnames.length && !cl.closed > -1;i++) {
     var ctx = {cl:cl, filter:opt.filter};
     if (opt.maxDepth) ctx.maxDepth = opt.maxDepth;
     find_dir(ctx, opt.dirnames[i], 1);
   }
-  
+
   return cl.close();
 }
 

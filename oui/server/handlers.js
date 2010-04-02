@@ -60,7 +60,7 @@ exports.session = {
       user: session.data.user,
     }
   },
-  
+
   // Sanity checks and preparation before a GET or POST to signIn
   _preSignIn: function(params, req, res) {
     // Sanity check
@@ -78,7 +78,7 @@ exports.session = {
     // no caching please
     res.setHeader('Cache-Control', 'no-cache');
   },
-  
+
   // Response checks and preparation after a GET or POST to signIn
   _postSignInFindUser: function(params, req, res, err, user, session) {
     // Error?
@@ -114,13 +114,13 @@ exports.session = {
       // Create and respond with challenge
       var nonce = hash.sha1_hmac(server.authNonceHMACKey || '?', String(new Date())); // todo
       session.data.auth_nonce = nonce;
-      // include username, as it's used to calculate passhash and might be 
+      // include username, as it's used to calculate passhash and might be
       // MixEDcAse (depending on the application, usernames might be looked up
       // in a case-insensitive manner).
       res.sendObject({ nonce: nonce, username: user.username });
     });
   },
-  
+
   // post response to previous challenge
   POST_signIn: function(params, req, res) {
     // todo: time-limit the auth_nonce
@@ -174,7 +174,7 @@ exports.session = {
           }
         }
       }
-      
+
       // If we got here, success == false
       res.sendError(401, 'Bad credentials');
     }); //< User.find

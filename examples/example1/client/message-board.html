@@ -1,5 +1,5 @@
 <script type="text/javascript" charset="utf-8">
-  
+
   oui.app.on('start', function(ev){
     exports.pipe = oui.pipe.get('message-board', function(err){
       if (err) throw err;
@@ -21,7 +21,7 @@
       __html.find('form').addClass('closed');
     });
   });
-  
+
   $(function(){
     var form = __html.find('form');
     form.submit(function(ev){
@@ -33,7 +33,7 @@
       });
     });
   });
-  
+
 </script>
 
 <style type="text/css" media="screen">

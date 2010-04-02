@@ -8,10 +8,10 @@ exports.Transport = function(options) {
     // Defaults
     path: oui.pipe.basePath,
     format: 'json'
-    
+
     // Required:
     // channel: string
-    
+
     // Over-riding oui.backend:
     // host: string,
     // port: int,
@@ -31,7 +31,7 @@ oui.mixin(exports.Transport.prototype, oui.EventEmitter.prototype, {
 
   // Disconnect
   disconnect: function(callback) { /* stub */ },
-  
+
   // Backend used for new connections
   backend: function() {
     if (this.options.host) {
@@ -56,18 +56,18 @@ oui.mixin(exports.Transport.prototype, oui.EventEmitter.prototype, {
   // Parse and emit an incoming message, decoding if needed.
   _handleMessage: function(data) {
     if (this.options.format && this.options.format === 'json') {
-		  if (data.length) {
-  		  try {
-  		    this.emit('message', JSON.parse(data));
-  	    } catch (e) {
-  	      this.emit('error', e);
-  	    }
-	    } else {
-		    this.emit('message', {});
-	    }
-	  } else {
-	    return this.emit('message', data);
-	  }
+      if (data.length) {
+        try {
+          this.emit('message', JSON.parse(data));
+        } catch (e) {
+          this.emit('error', e);
+        }
+      } else {
+        this.emit('message', {});
+      }
+    } else {
+      return this.emit('message', data);
+    }
   },
 });
 
@@ -77,7 +77,7 @@ exports.best = function() {
   for (var i=0, k; k = exports.preferred[i]; i++){
     var transport = exports[k];
     if (transport && transport.Transport && transport.isUseable())
-			return exports._best = transport.Transport;
-			// future: to save memory, we _could_ delete all but the best transport.
-	}
+      return exports._best = transport.Transport;
+      // future: to save memory, we _could_ delete all but the best transport.
+  }
 };
