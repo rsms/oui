@@ -2597,13 +2597,13 @@ loop:   for (;;) {
             }
             advance('}', t);
             indent = old_indent;
-        } else {
+        } /*else { // [RA] disabled enforcing of blocks
             warning("Expected '{a}' and instead saw '{b}'.",
                     nexttoken, '{', nexttoken.value);
             noreach = true;
             a = [statement()];
             noreach = false;
-        }
+        }*/
         funct['(verb)'] = null;
         scope = s;
         inblock = b;
