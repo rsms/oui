@@ -24,17 +24,17 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 (function($) {
   $.fn.relatizeDate = function() {
     return $(this).each(function() {
-      if ($(this).hasClass( 'relatized' )) return
-      $(this).text( $.relatizeDate(this) ).addClass( 'relatized' )
-    })
-  }
+      if ($(this).hasClass( 'relatized' )) return;
+      $(this).text( $.relatizeDate(this) ).addClass( 'relatized' );
+    });
+  };
 
   $.relatizeDate = function(element) {
-    return $.relatizeDate.timeAgoInWords( new Date($(element).text()) )
-  }
+    return $.relatizeDate.timeAgoInWords( new Date($(element).text()) );
+  };
 
   // shortcut
-  $r = $.relatizeDate
+  $r = $.relatizeDate;
 
   $.extend($.relatizeDate, {
     shortDays: [ 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat' ],
@@ -53,7 +53,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
       var pad = function(num) {
         var string = num.toString(10);
-        return new Array((2 - string.length) + 1).join('0') + string
+        return new Array((2 - string.length) + 1).join('0') + string;
       };
 
       return format.replace(/\%([aAbBcdHImMpSwyY])/g, function(part) {
@@ -74,7 +74,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           case 'y': return pad(date.getFullYear() % 100); break;
           case 'Y': return date.getFullYear().toString(); break;
         }
-      })
+      });
     },
 
     timeAgoInWords: function(targetDate, includeTime) {
@@ -105,13 +105,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       } else {
         var days = (parseInt(delta / 86400)).toString();
         if (days > 5) {
-          var fmt  = '%B %d, %Y'
-          if (includeTime) fmt += ' %I:%M %p'
+          var fmt  = '%B %d, %Y';
+          if (includeTime) fmt += ' %I:%M %p';
           return $r.strftime(fromTime, fmt);
         } else {
-          return days + " days ago"
+          return days + " days ago";
         }
       }
     }
-  })
+  });
 })(jQuery);
