@@ -94,6 +94,10 @@ exports.retry = function(action, callback) {
           responseOrHTTPCode = 0;
         if ((responseOrHTTPCode % 500) < 100)
           return again(retries+1, args);
+      } else if (exports.currentIndex > -1) {
+        var b = exports.backends[exports.currentIndex];
+        // keep track of this backend since it seems to work.
+        oui.cookie.set('__oui_backend', b.host+':'+b.port);
       }
       if (callback) callback.apply(this, args);
     });
@@ -211,27 +215,59 @@ exports.setup = function() {
         Array.prototype.splice.apply(exports.backends, localBackends);
     }
     // add same-origin fallback
-    else if (window.location.protocol !== 'file:') {
-      exports.backends.push({
-        host: window.location.hostname,
-        port: window.location.port||80,
-        secure: window.location.protocol.indexOf('https') !== -1
-      });
+    // TODO: allow this to be disabled (so that the backends list is never modified)
+    else {
+      // first, check that the current backend is not already in the list
+      var found = false,
+          sameOriginBackend = {
+            host: window.location.hostname,
+            port: window.location.port||80,
+            secure: window.location.protocol.indexOf('https') !== -1
+          };
+      for (var i=0,b;b=exports.backends[i];++i) {
+        if (b.host === sameOriginBackend.host && b.port === sameOriginBackend.port) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) exports.backends.push(sameOriginBackend);
     }
   }
 
   // sanitize backends
-  for (var i=0,backend;backend=exports.backends[i];i++) {
-    if (!backend.port) backend.port = 80;
-    if (!backend.host) {
+  for (var i=0,b;b=exports.backends[i];++i) {
+    if (!b.port) b.port = 80;
+    if (!b.host) {
       throw new Error('inconsistency error in '+__name+
       ' -- backend without host specification');
     }
     if (backend.path) backend.path = '/'+backend.path.replace(/^\/+|\/+$/g, '');
   }
 
-  // Freeze backends if possible
-  if (typeof Object.freeze === 'function') Object.freeze(exports.backends);
+  // Restore current backend from browser session (between page reloads).
+  // This cookie is transient, lives in browser session)
+  // Value in the format "host:port"
+  var restored, t, previousBackend = oui.cookie.get('__oui_backend');
+  if (previousBackend !== undefined && (t = previousBackend.split(':')) && t.length === 2) {
+    var = parseInt(t[1]);
+    for (var i=0,b;b=exports.backends[i];++i) {
+      if (b.host === t[0] && b.port === t[1]) {
+        exports.currentIndex = i;
+        restored = true;
+        console.debug(__name+' restored previously used backend from cookie:',
+          exports.backends[exports.currentIndex]);
+        break;
+      }
+    }
+  }
+  // In the case there was no previous backend, choose one by random from the first
+  // 75%
+  if (!restored) {
+    var hi = Math.floor((exports.backends.length-1)*0.75);
+    exports.currentIndex = Math.round(Math.random()*hi);
+    console.debug(__name+' selected a random backend:',
+      exports.backends[exports.currentIndex]);
+  }
 
   console.debug('backends =>', exports.backends);
 }
