@@ -87,6 +87,23 @@ function requestHandler(req, res) {
 	req.prepare()
 	res.prepare()
 
+	// Register res.close to be called when/if the client disconnects
+	var onClientDisconnect;
+	if (this.debug) {
+	  onClientDisconnect = function(){
+	    sys.log('[oui] '+req.connection.remoteAddress+':'+
+	      req.connection.remotePort+' disconnected during response construction');
+	    if (!res.finished) res.close();
+	  };
+  } else {
+	  onClientDisconnect = function(){ if (!res.finished) res.close(); };
+  }
+  req.connection.addListener('end', onClientDisconnect);
+  // Make sure the listener does not linger after the response is complete
+  res.addListener('end', function(){
+    req.connection.removeListener('end', onClientDisconnect);
+  });
+
 	// log request
 	if (this.debug) {
 	  // next tick because of a weird bug in node http where reading headers seems
