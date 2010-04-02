@@ -53,8 +53,9 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
       }
     }
     var options = {}; // TODO: expose as set:able in exec function call
-    var self = this, action = function(cl){
-      var url = oui.backend.currentURL()+'/'+remoteName;
+    var self = this, action = function(backend, cl){
+      var url = backend.url()+'/'+remoteName;
+      console.log('url =>',url);
       oui.http.request(method, url, params, options, cl);
     };
     this.emit('exec-send', remoteName);

@@ -27,7 +27,15 @@ exports.Transport = function(options) {
 };
 oui.mixin(exports.Transport.prototype, oui.EventEmitter.prototype, {
   // Opens the connection. Returns false if already connected, otherwise true.
-  connect: function(callback) { /* stub */ },
+  connect: function(backend, callback) {
+    /* stub */
+    if (typeof backend === 'function') {
+      callback = backend;
+      backend = undefined;
+    } else {
+      this.lastBackend = backend;
+    }
+  },
 
   // Returns true if data was sent or queued, otherwise false is returned (if
   // the socket is closed or is closing).
@@ -44,8 +52,6 @@ oui.mixin(exports.Transport.prototype, oui.EventEmitter.prototype, {
         port: this.options.port || 80,
         secure: this.options.secure
       };
-    } else {
-      this.lastBackend = oui.backend.current();
     }
     return this.lastBackend;
   },

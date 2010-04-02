@@ -33,7 +33,7 @@ oui.mixin(Pipe.prototype, oui.EventEmitter.prototype, {
   // Send a message
   send: function(message, callback) {
     var self = this;
-    oui.backend.retry(function(c){ self.transport.connect(c); }, function(err){
+    oui.backend.retry($.proxy(self.transport.connect, self.transport), function(err){
       if (err) return callback && callback(err);
       var sentOrQueued = self.transport.send(message);
       if (callback) callback(null, sentOrQueued);

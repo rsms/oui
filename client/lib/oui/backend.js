@@ -17,7 +17,7 @@ exports.events = new oui.EventEmitter();
 
 if (console.debug) {
   exports.events.on('change', function(){
-    console.debug('backend changed to', exports.current());
+    console.debug('backend changed to', exports.current(), exports.backends);
   }).on('error', function(ev, err, backend) {
     console.debug('backend failed', err, backend);
   });
@@ -30,9 +30,14 @@ exports.current = function() {
 
 exports.currentURL = function() {
   var backend = exports.current();
-  var url = (backend.secure ? 'https://' : 'http://')+
-    backend.host + ':' + backend.port;
-  if (backend.path) url += backend.path;
+  if (backend)
+    return backend.url();
+};
+
+var backend_url = function() {
+  var url = (this.secure ? 'https://' : 'http://')+
+    this.host + ':' + this.port;
+  if (this.path) url += this.path;
   return url;
 };
 
@@ -43,18 +48,20 @@ exports.currentURL = function() {
 exports.reportError = function(error, backend){
   // assure the current backend is the one that did fail
   if (backend && exports.current() !== backend)
-    return; // we have already moved from that backend
+    return true; // we have already moved from that backend
   if (!error) error = new Error('backend failure');
   exports.events.emit('error', error, backend);
-  exports.next();
+  return exports.next();
 };
 
 /**
  * Try to perform <action> for each unqiue backend.
  *
- * <action> must be a function which accepts a single function parameter (an
- * internal callback). The callback passed to <action> must be called and must
- * receive at least one argument: (Error err, [Object response|Number httpCode])
+ * <action> must be a function which accepts two arguments:
+ *   (Object backend, Function callback).
+ * The backend argument is the backend to connect with.
+ * The callback passed to <action> must be called with at least one argument:
+ *   (Error err, [Object response|Number httpCode])
  *
  * - If <[Object response|Number httpCode]> is undefined or does not match the
  *   prototype, a retry will be done if err is a true value, no matter what the
@@ -71,38 +78,47 @@ exports.reportError = function(error, backend){
  *             called with the most recent error.
  */
 exports.retry = function(action, callback) {
-  // TODO: only test next backend when the error is hard or a 5xx http error.
   if (exports.setup !== undefined) {
     exports.setup();
     exports.setup = undefined;
   }
-  var again = function(retries, prevArgs){
-    if (retries === exports.backends.length) {
-      if (callback) {
-        if (prevArgs.length === 0) {
-          prevArgs = [new Error('no retries possible')];
-        } else if (!prevArgs[0]) {
-          prevArgs[0] = new Error('no retries possible');
-        }
-        callback.apply(this, prevArgs);
+  var again, backend, onend, self = this;
+  onend = function(prevArgs) {
+    console.warn(__name+'.retry: all backends failed. action =>', action);
+    if (callback) {
+      if (prevArgs.length === 0) {
+        prevArgs = [new Error('All backends failed')];
+      } else if (!prevArgs[0]) {
+        prevArgs[0] = new Error('All backends failed');
       }
-      return;
+      callback.apply(self, prevArgs);
     }
-    action(function(err, responseOrHTTPCode) {
+  };
+  again = function(retries, prevArgs){
+    if (retries === exports.backends.length)
+      return onend(prevArgs);
+    backend = exports.current();
+    action(backend, function(err, responseOrHTTPCode) {
       var args = Array.prototype.slice.call(arguments);
       if (err) {
         if (typeof responseOrHTTPCode === 'object')
           responseOrHTTPCode = responseOrHTTPCode.statusCode;
         if (typeof responseOrHTTPCode !== 'number')
           responseOrHTTPCode = 0;
-        if ((responseOrHTTPCode % 500) < 100)
-          return again(retries+1, args);
+        if ((responseOrHTTPCode % 500) < 100) {
+          console.debug(__name+' retrying '+action);
+          if (exports.reportError(err, backend)) {
+            return again(retries+1, args);
+          } else {
+            return onend(prevArgs);
+          }
+        }
       } else if (exports.currentIndex > -1) {
         var b = exports.backends[exports.currentIndex];
         // keep track of this backend since it seems to work.
         oui.cookie.set('__oui_backend', b.host+':'+b.port);
       }
-      if (callback) callback.apply(this, args);
+      if (callback) callback.apply(self, args);
     });
   };
   again(0);
@@ -180,7 +196,7 @@ exports.next = function() {
 };
 
 exports.setup = function() {
-  var b,i;
+  var b, i, isFile, isLocal;
   // setup
   if (window.OUI_BACKEND) {
     // global OUI_BACKEND overrides <backends>
@@ -193,8 +209,8 @@ exports.setup = function() {
   }
   else {
     // if file:, prepend localhost with same ports
-    var isFile = window.location.protocol === 'file:';
-    var isLocal = isFile || window.location.hostname.match(
+    isFile = window.location.protocol === 'file:';
+    isLocal = isFile || window.location.hostname.match(
         /(?:\.local$|^(?:localhost|127\.0\.0\.*)$)/);
 
     if (isLocal) {
@@ -246,31 +262,36 @@ exports.setup = function() {
       ' -- backend without host specification');
     }
     if (b.path) b.path = '/'+b.path.replace(/^\/+|\/+$/g, '');
+    if (!b.url) b.url = jQuery.proxy(backend_url, b);
   }
 
-  // Restore current backend from browser session (between page reloads).
-  // This cookie is transient, lives in browser session)
-  // Value in the format "host:port"
-  var restored, t, previousBackend = oui.cookie.get('__oui_backend');
-  if (previousBackend !== undefined && (t = previousBackend.split(':')) && t.length === 2) {
-    t[1] = parseInt(t[1]);
-    for (i=0; (b=exports.backends[i]); ++i) {
-      if (b.host === t[0] && b.port === t[1]) {
-        exports.currentIndex = i;
-        restored = true;
-        console.debug(__name+' restored previously used backend from cookie:',
-          exports.backends[exports.currentIndex]);
-        break;
+  if (isLocal) {
+    exports.currentIndex = 0;
+  } else {
+    // Restore current backend from browser session (between page reloads).
+    // This cookie is transient, lives in browser session)
+    // Value in the format "host:port"
+    var restored, t, previousBackend = oui.cookie.get('__oui_backend');
+    if (previousBackend !== undefined && (t = previousBackend.split(':')) && t.length === 2) {
+      t[1] = parseInt(t[1]);
+      for (i=0; (b=exports.backends[i]); ++i) {
+        if (b.host === t[0] && b.port === t[1]) {
+          exports.currentIndex = i;
+          restored = true;
+          console.debug(__name+' restored previously used backend from cookie:',
+            exports.backends[exports.currentIndex]);
+          break;
+        }
       }
     }
-  }
-  // In the case there was no previous backend, choose one by random from the first
-  // 75%
-  if (!restored) {
-    var hi = Math.floor((exports.backends.length-1)*0.75);
-    exports.currentIndex = Math.round(Math.random()*hi);
-    console.debug(__name+' selected a random backend:',
-      exports.backends[exports.currentIndex]);
+    // In the case there was no previous backend, choose one by random from the first
+    // 75%
+    if (!restored) {
+      var hi = Math.floor((exports.backends.length-1)*0.75);
+      exports.currentIndex = Math.round(Math.random()*hi);
+      console.debug(__name+' selected a random backend:',
+        exports.backends[exports.currentIndex]);
+    }
   }
 
   console.debug('backends =>', exports.backends);

@@ -4,7 +4,7 @@ exports.Response = function(xhr, request, data) {
   this.xhr = xhr;
   this.request = request;
   this.data = data;
-  this.statusCode = xhr.status;
+  this.statusCode = (typeof xhr === 'object') ? xhr.status : 0;
 };
 
 exports.Request = function(method, url) {

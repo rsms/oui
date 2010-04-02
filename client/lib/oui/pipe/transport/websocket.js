@@ -10,8 +10,14 @@ exports.Transport = function(options) {
 
 oui.mixin(exports.Transport.prototype, __parent.Transport.prototype, {
 
-  connect: function(callback) {
+  connect: function(backend, callback) {
     var self = this;
+    if (typeof backend === 'function') {
+      callback = backend;
+      backend = undefined;
+    } else {
+      this.lastBackend = backend;
+    }
     if (this.socket) {
       var rs = this.socket.readyState;
       if (rs === WebSocket.OPEN) {
