@@ -79,8 +79,11 @@ exports.retry = function(action, callback) {
   var again = function(retries, prevArgs){
     if (retries === exports.backends.length) {
       if (callback) {
-        if (prevArgs.length === 0)) prevArgs = [new Error('no retries possible')];
-        else if (!prevArgs[0]) prevArgs[0] = new Error('no retries possible');
+        if (prevArgs.length === 0) {
+          prevArgs = [new Error('no retries possible')];
+        } else if (!prevArgs[0]) {
+          prevArgs[0] = new Error('no retries possible');
+        }
         callback.apply(this, prevArgs);
       }
       return;
@@ -177,6 +180,7 @@ exports.next = function() {
 };
 
 exports.setup = function() {
+  var b,i;
   // setup
   if (window.OUI_BACKEND) {
     // global OUI_BACKEND overrides <backends>
@@ -201,11 +205,11 @@ exports.setup = function() {
         origBackends = [{host:'localhost', port:(!p||p===80 ? 8080 : p)}];
       }
       localBackends = [0,0]; // first 2 args to array splice later on
-      for (var i=0;i<origBackends.length;i++) {
+      for (i=0;i<origBackends.length;i++) {
         var backend = origBackends[i];
         var port = backend.port || 80;
         if (!ports[port]) { ports[port] = 1; // unique
-          var b = {host:hostname};
+          b = {host:hostname};
           if (backend.port) b.port = backend.port;
           if (backend.secure !== undefined) b.secure = backend.secure;
           localBackends.push(b);
@@ -224,7 +228,7 @@ exports.setup = function() {
             port: window.location.port||80,
             secure: window.location.protocol.indexOf('https') !== -1
           };
-      for (var i=0,b;b=exports.backends[i];++i) {
+      for (i=0;(b=exports.backends[i]);++i) {
         if (b.host === sameOriginBackend.host && b.port === sameOriginBackend.port) {
           found = true;
           break;
@@ -235,13 +239,13 @@ exports.setup = function() {
   }
 
   // sanitize backends
-  for (var i=0,b;b=exports.backends[i];++i) {
+  for (i=0;(b=exports.backends[i]);++i) {
     if (!b.port) b.port = 80;
     if (!b.host) {
       throw new Error('inconsistency error in '+__name+
       ' -- backend without host specification');
     }
-    if (backend.path) backend.path = '/'+backend.path.replace(/^\/+|\/+$/g, '');
+    if (b.path) b.path = '/'+b.path.replace(/^\/+|\/+$/g, '');
   }
 
   // Restore current backend from browser session (between page reloads).
@@ -250,7 +254,7 @@ exports.setup = function() {
   var restored, t, previousBackend = oui.cookie.get('__oui_backend');
   if (previousBackend !== undefined && (t = previousBackend.split(':')) && t.length === 2) {
     t[1] = parseInt(t[1]);
-    for (var i=0,b;b=exports.backends[i];++i) {
+    for (i=0; (b=exports.backends[i]); ++i) {
       if (b.host === t[0] && b.port === t[1]) {
         exports.currentIndex = i;
         restored = true;
@@ -270,4 +274,4 @@ exports.setup = function() {
   }
 
   console.debug('backends =>', exports.backends);
-}
+};
