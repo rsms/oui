@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-var sys = require('sys')
-   ,path = require('path')
-   ,fs = require('fs')
-   ,Builder = require('./builder').Builder
-   ,trollop = require('./trollop');
+var sys = require('sys'),
+    path = require('path'),
+    fs = require('fs'),
+    Builder = require('./builder').Builder,
+    trollop = require('./trollop'),
+    cli = require('./cli');
 
 var basedir = exports.basedir =
   path.dirname(path.dirname(fs.realpathSync(__filename)));
@@ -68,10 +69,10 @@ function main(argv, options, callback) {
 
   if (!callback){callback=function(err){
     if (err) {
-      sys.error(stylize('build failed: ', 'red')+(err.stack || err));
+      sys.error(cli.style('build failed: ', 'red')+(err.stack || err));
       if (options.once) process.exit(1);
     } else {
-      sys.error(stylize('build OK', 'green'));
+      sys.error(cli.style('build OK', 'green'));
       if (options.once) process.exit(0);
     }
   }}
@@ -131,22 +132,6 @@ function main(argv, options, callback) {
   }
 
   build();
-}
-
-var stylize = function(x) { return x; }
-if ('TERM' in process.env && process.env['TERM'].indexOf('color') !== -1 || 'CLICOLOR' in process.env) {
-  stylize = function(str, style) {
-    const styles = {
-      'bold'      : [1,  22],
-      'inverse'   : [7,  27],
-      'underline' : [4,  24],
-      'yellow'    : ['1;33', 39],
-      'green'     : ['1;32', 39],
-      'red'       : ['1;31', 39]
-    };
-    return '\033[' + styles[style][0] + 'm' + str +
-           '\033[' + styles[style][1] + 'm';
-  }
 }
 
 main();

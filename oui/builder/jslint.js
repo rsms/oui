@@ -2400,7 +2400,7 @@ loop:   for (;;) {
     }
 
     function reachable(s) {
-        var i = 0, t;
+        /*var i = 0, t; // [RA] disabled since this messes with if(x)return etc.
         if (nexttoken.id !== ';' || noreach) {
             return;
         }
@@ -2419,7 +2419,7 @@ loop:   for (;;) {
                 break;
             }
             i += 1;
-        }
+        }*/
     }
 
 

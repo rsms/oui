@@ -1,13 +1,16 @@
-var sys = require('sys')
-   ,path = require('path')
-   ,fs = require('fs')
-   ,util = require('./util')
-   ,jsmin = require('./builder/jsmin')
-   ,jslint = require('./builder/jslint')
-   ,sass = require('./builder/sass')
-   ,less = require('./builder/less')
+var sys = require('sys'),
+    path = require('path'),
+    fs = require('fs'),
 
-require('./std-additions');
+    util = require('../util'),
+    cli = require('../cli'),
+
+    jsmin = require('./jsmin'),
+    jslint = require('./jslint'),
+    sass = require('./sass'),
+    less = require('./less');
+
+require('../std-additions');
 
 // -------------------------------------------------------------------------
 
@@ -221,6 +224,7 @@ mixin(Product.prototype, {
 const SOURCE_DEMUXABLE_TYPE_RE = /^x?html?$/i;
 const SOURCE_JSOPT_UNTANGLED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:untangled/igm;
 const SOURCE_JSOPT_UNOPTIMIZED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:unoptimized/igm;
+const SOURCE_JSOPT_NOLINT_RE = /(?:^|[\r\n])\s*\/\/\s*oui:nolint/igm;
 const SOURCE_HTMLOPT_UNTANGLED_RE = /<\!--[\r\n\s]*oui:untangled[\s\r\n]*-->/igm;
 
 function Source(builder, filename, relname, content) {
@@ -440,32 +444,97 @@ mixin(Source.prototype, {
   },
 
   _compileJS: function(callback) {
-    // oui:untangled
-    var tangle, cl = this.content.length;
+    // Tangle (disable with "oui:untangled")
+    var cl = this.content.length;
     this.content = this.content.replace(SOURCE_JSOPT_UNTANGLED_RE, '');
-    tangle = cl === this.content.length;
-
-    if (tangle) {
+    if (cl === this.content.length) {
       this.content = '__defm('+JSON.stringify(this.name)+
         ', function(exports, __name, __html, __parent){'+
         this.content.replace(/[\r\n][\t ]*$/,'\n')+
         '});/*'+this.name+'*/\n';
     }
+    
+    // Lint (disable with "oui:nolint")
+    // Only makes sense when we have a callback.
+    if (callback) {
+      var cl = this.content.length;
+      this.content = this.content.replace(SOURCE_JSOPT_NOLINT_RE, '');
+      if (cl === this.content.length) {
+        var problems = this._lintJS();
+        if (problems) {
+          // Build jslint report and pass it on to <callback>
+          sys.log(this.filename);
+          var errors = problems.errors;
+          //sys.debug(sys.inspect(errors, true, 10));
+          var msg = ['[jslint] '+errors.length+' errors in '+
+            cli.style(this.filename, 'yellow')+':'];
+          errors.forEach(function(e){
+            // format reason
+            var reason = e.raw.replace(/\{([^{}]*)\}/g, function (a, b) {
+              var r = e[b];
+              if (typeof r === 'string' || typeof r === 'number')
+                return cli.style(r, 'cyan');
+              return a;
+            });
+            // Get line context
+            var numLineContext = 2,
+                start = Math.max(0, e.line-1-numLineContext),
+                linesBefore = problems.lines.slice(start, start+numLineContext),
+                linesAfter = problems.lines.slice(e.line, e.line+numLineContext);
+            // oui-specific: remove __defm if first
+            if (linesBefore.length) {
+              linesBefore[0] = linesBefore[0].replace(
+                /^__defm\(".+",\s*function\([^\)]+\)\s*\{\s*/, '');
+            }
+            // Build message
+            msg.push(
+            cli.style(
+              ' '+reason+' at offset '+e.character.toString()+
+              ' on '+cli.style('line '+e.line.toString(), 'yellow')+':'
+            , 'bg:black'));
+            msg.push(cli.style('  '+linesBefore.join('\n  '), 'grey'));
+            msg.push('  '+e.evidence);
+            msg.push(cli.style('  '+linesAfter.join('\n  '), 'grey'));
+          });
+        
+          var err = new Error('jslint');
+          err.file = this.filename;
+          err.stack = msg.join('\n');
+          return callback(err);
+        }
+      }
+    }
 
-    // oui:unoptimized
-    var optimize, cl = this.content.length;
-    this.content = this.content.replace(SOURCE_JSOPT_UNOPTIMIZED_RE, '');
-    optimize = cl === this.content.length;
-
-    if (optimize && this.builder.optimize > 0) {
-      var preSize = this.content.length;
-      this.content = jsmin.jsmin('', this.content, this.builder.optimize);
-      this.builder.log('optimized '+this+' -- '+
-        Math.round((1.0-(parseFloat(this.content.length)/preSize))*100.0)+
-        '% ('+(preSize-this.content.length)+' B) smaller', 2);
+    // Optimize (disable with "oui:unoptimized")
+    if (this.builder.optimize > 0) {
+      var cl = this.content.length;
+      this.content = this.content.replace(SOURCE_JSOPT_UNOPTIMIZED_RE, '');
+      if (cl === this.content.length) {
+        var preSize = this.content.length;
+        this.content = jsmin.jsmin('', this.content, this.builder.optimize);
+        this.builder.log('optimized '+this+' -- '+
+          Math.round((1.0-(parseFloat(this.content.length)/preSize))*100.0)+
+          '% ('+(preSize-this.content.length)+' B) smaller', 2);
+      }
     }
 
     if (callback) callback();
+  },
+  
+  _lintJS: function() {
+    var options = {
+      browser: true, css: true, devel: true, evil: true, forin: true,
+      fragment: true, laxbreak: true, newcap: true, on: true, eqeqeq: true,
+      //plusplus: false,
+      //passfail: true, // stop on first error
+      predef: ['oui', '__defm']
+    };
+    var lines = this.content.split(/\n/);
+    if (jslint.JSLINT(lines, options))
+      return;
+    var data = jslint.JSLINT.data();
+    data.lines = lines;
+    return data;
   },
 
   /// String rep
