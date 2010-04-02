@@ -149,6 +149,7 @@ else {
  *   });
  *   var m = new Monkey();
  */
+// TODO: replace with inherits
 function mix(ctor) {
   if (arguments.length < 2)
     throw 'too few arguments';

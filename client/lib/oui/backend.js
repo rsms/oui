@@ -53,7 +53,17 @@ exports.reportError = function(error, backend){
  * Try to perform <action> for each unqiue backend.
  *
  * <action> must be a function which accepts a single function parameter (an
- * internal callback).
+ * internal callback). The callback passed to <action> must be called and must
+ * receive at least one argument: (Error err, [Object response|Number httpCode])
+ *
+ * - If <[Object response|Number httpCode]> is undefined or does not match the
+ *   prototype, a retry will be done if err is a true value, no matter what the
+ *   error is.
+ *
+ * - If <response|httpCode> then we test
+ *   (((response.statusCode || httpCode) % 500) < 100) -- if true, a retry
+ *   (using the next backend) will be executed. Otherwise the call will be
+ *   forwarded to <callback>.
  *
  * Scenario A: <action> succeeds -- <callback> is called without any arguments.
  *
@@ -62,22 +72,67 @@ exports.reportError = function(error, backend){
  */
 exports.retry = function(action, callback) {
   // TODO: only test next backend when the error is hard or a 5xx http error.
-  if (exports.setup !== undefined) { exports.setup();exports.setup=undefined; }
-  var again = function(retries, prevErr){
+  if (exports.setup !== undefined) {
+    exports.setup();
+    exports.setup = undefined;
+  }
+  var again = function(retries, prevArgs){
     if (retries === exports.backends.length) {
-      return callback && callback(prevErr||new Error('no retries possible'));
+      if (callback) {
+        if (prevArgs.length === 0)) prevArgs = [new Error('no retries possible')];
+        else if (!prevArgs[0]) prevArgs[0] = new Error('no retries possible');
+        callback.apply(this, prevArgs);
+      }
+      return;
     }
-    action(function(err) {
-      if (err) again(retries+1, err);
-      else if (callback) callback.apply(null, Array.prototype.slice.call(arguments));
+    action(function(err, responseOrHTTPCode) {
+      var args = Array.prototype.slice.call(arguments);
+      if (err) {
+        if (typeof responseOrHTTPCode === 'object')
+          responseOrHTTPCode = responseOrHTTPCode.statusCode;
+        if (typeof responseOrHTTPCode !== 'number')
+          responseOrHTTPCode = 0;
+        if ((responseOrHTTPCode % 500) < 100)
+          return again(retries+1, args);
+      }
+      if (callback) callback.apply(this, args);
     });
   };
   again(0);
 };
 
-// Returns true if moved on to a untested backend, false if wrapped around.
+// Returns true if moved on to an untested backend, false if wrapped around.
 exports.next = function() {
-  if (exports.setup !== undefined) { exports.setup();exports.setup=undefined; }
+  /*
+  Idea for improvement of load balancing:
+
+  Backend server could embed a key like "__oui" in any response with meta
+  information about oui stuff, like backend load.
+
+  E.g: When a backend is overloaded, it could respond with:
+
+      503 Service Unavailable
+      Retry-after: 120
+      Content-type: application/json
+
+      {
+        "__oui":{
+          "backend_status": {
+            "host.name:8100": { "load": 0.9 },
+            "host.name:8101": { "load": 2.1 },
+            "host.name:8102": { "load": 0.3 }
+          }
+        }
+      }
+
+  In this case we simply re-order our "backends" list according to "load" and
+  try the next backend (explicitly skipping the one we just got a 503 from).
+  */
+  if (exports.setup !== undefined) {
+    exports.setup();
+    exports.setup = undefined;
+    return true;
+  }
 
   // round-robin
   exports.currentIndex++;
@@ -120,14 +175,20 @@ exports.next = function() {
 exports.setup = function() {
   // setup
   if (window.OUI_BACKEND) {
-    exports.backends = $.isArray(window.OUI_BACKEND) ? window.OUI_BACKEND : [window.OUI_BACKEND];
+    // global OUI_BACKEND overrides <backends>
+    exports.backends = $.isArray(window.OUI_BACKEND) ?
+      window.OUI_BACKEND : [window.OUI_BACKEND];
   } else if (window.OUI_BACKENDS) {
-    exports.backends = $.isArray(window.OUI_BACKENDS) ? window.OUI_BACKENDS : [window.OUI_BACKENDS];
+    // global OUI_BACKENDS overrides <backends>
+    exports.backends = $.isArray(window.OUI_BACKENDS) ?
+      window.OUI_BACKENDS : [window.OUI_BACKENDS];
   }
   else {
     // if file:, prepend localhost with same ports
     var isFile = window.location.protocol === 'file:';
-    var isLocal = isFile || window.location.hostname.match(/(?:\.local$|^(?:localhost|127\.0\.0\.*)$)/);
+    var isLocal = isFile || window.location.hostname.match(
+        /(?:\.local$|^(?:localhost|127\.0\.0\.*)$)/);
+
     if (isLocal) {
       var origBackends = exports.backends, localBackends, ports = {};
       var hostname = isFile ? 'localhost' : window.location.hostname;

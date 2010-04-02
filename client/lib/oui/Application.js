@@ -2,7 +2,7 @@
 /** Application */
 exports.Application = function() {
   this.automaticallyPresentsErrors = false;
-}
+};
 oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
   main: function(){
     if (this._mainCalled) throw new Error('main has already been invoked');
