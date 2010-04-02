@@ -34,7 +34,7 @@ function any_hmac_sha1(k, d, e)
  */
 function sha1_vm_test()
 {
-	return hex_sha1("abc").toLowerCase() == "a9993e364706816aba3e25717850c26c9cd0d89d";
+	return hex_sha1("abc").toLowerCase() === "a9993e364706816aba3e25717850c26c9cd0d89d";
 }
 
 /*
@@ -53,7 +53,7 @@ function rstr_hmac_sha1(key, data)
 	var bkey = rstr2binb(key);
 	if(bkey.length > 16) bkey = binb_sha1(bkey, key.length * 8);
 
-	var ipad = Array(16), opad = Array(16);
+	var ipad = new Array(16), opad = new Array(16);
 	for(var i = 0; i < 16; i++)
 	{
 		ipad[i] = bkey[i] ^ 0x36363636;
@@ -94,8 +94,11 @@ function rstr2b64(input)
 								| (i + 2 < len ? input.charCodeAt(i+2)			: 0);
 		for(var j = 0; j < 4; j++)
 		{
-			if(i * 8 + j * 6 > input.length * 8) output += B64PAD;
-			else output += B64CHARS.charAt((triplet >>> 6*(3-j)) & 0x3F);
+			if(i * 8 + j * 6 > input.length * 8) {
+			  output += B64PAD;
+			} else {
+			  output += B64CHARS.charAt((triplet >>> 6*(3-j)) & 0x3F);
+		  }
 		}
 	}
 	return output;
@@ -108,13 +111,12 @@ function rstr2any(input, encoding, divisor) {
 	divisor = divisor || encoding.length;
 	if (divisor > encoding.length)
 		throw new Error('not enough characters');
-	var remainders = Array();
+	var remainders = [];
 	var i, q, x, quotient;
 
 	/* Convert to an array of 16-bit big-endian values, forming the dividend */
-	var dividend = Array(Math.ceil(input.length / 2));
-	for(i = 0; i < dividend.length; i++)
-	{
+	var dividend = new Array(Math.ceil(input.length / 2));
+	for(i = 0; i < dividend.length; i++) {
 		dividend[i] = (input.charCodeAt(i * 2) << 8) | input.charCodeAt(i * 2 + 1);
 	}
 
@@ -126,7 +128,7 @@ function rstr2any(input, encoding, divisor) {
 	 */
 	while(dividend.length > 0)
 	{
-		quotient = Array();
+		quotient = [];
 		x = 0;
 		for(i = 0; i < dividend.length; i++)
 		{
@@ -147,7 +149,7 @@ function rstr2any(input, encoding, divisor) {
 
 	/* Append leading zero equivalents */
 	var full_length = Math.ceil(input.length * 8 /
-																		(Math.log(encoding.length) / Math.log(2)))
+															(Math.log(encoding.length) / Math.log(2)));
 	for(i = output.length; i < full_length; i++)
 		output = encoding[0] + output;
 
@@ -164,32 +166,31 @@ function str2rstr_utf8(input)
 	var i = -1;
 	var x, y;
 
-	while(++i < input.length)
-	{
+	while(++i < input.length) {
 		/* Decode utf-16 surrogate pairs */
 		x = input.charCodeAt(i);
 		y = i + 1 < input.length ? input.charCodeAt(i + 1) : 0;
-		if(0xD800 <= x && x <= 0xDBFF && 0xDC00 <= y && y <= 0xDFFF)
-		{
+		if(0xD800 <= x && x <= 0xDBFF && 0xDC00 <= y && y <= 0xDFFF) {
 			x = 0x10000 + ((x & 0x03FF) << 10) + (y & 0x03FF);
 			i++;
 		}
 
 		/* Encode output as utf-8 */
-		if(x <= 0x7F)
+		if (x <= 0x7F) {
 			output += String.fromCharCode(x);
-		else if(x <= 0x7FF)
+		} else if(x <= 0x7FF) {
 			output += String.fromCharCode(0xC0 | ((x >>> 6 ) & 0x1F),
 																		0x80 | ( x				 & 0x3F));
-		else if(x <= 0xFFFF)
+		} else if(x <= 0xFFFF) {
 			output += String.fromCharCode(0xE0 | ((x >>> 12) & 0x0F),
 																		0x80 | ((x >>> 6 ) & 0x3F),
 																		0x80 | ( x				 & 0x3F));
-		else if(x <= 0x1FFFFF)
+		} else if(x <= 0x1FFFFF) {
 			output += String.fromCharCode(0xF0 | ((x >>> 18) & 0x07),
 																		0x80 | ((x >>> 12) & 0x3F),
 																		0x80 | ((x >>> 6 ) & 0x3F),
 																		0x80 | ( x				 & 0x3F));
+		}
 	}
 	return output;
 }
@@ -221,10 +222,10 @@ function str2rstr_utf16be(input)
  */
 function rstr2binb(input)
 {
-	var output = Array(input.length >> 2);
-	for(var i = 0; i < output.length; i++)
+	var i, output = [input.length >> 2];
+	for(i = 0; i < output.length; i++)
 		output[i] = 0;
-	for(var i = 0; i < input.length * 8; i += 8)
+	for(i = 0; i < input.length * 8; i += 8)
 		output[i>>5] |= (input.charCodeAt(i / 8) & 0xFF) << (24 - i % 32);
 	return output;
 }
@@ -249,7 +250,7 @@ function binb_sha1(x, len)
 	x[len >> 5] |= 0x80 << (24 - len % 32);
 	x[((len + 64 >> 9) << 4) + 15] = len;
 
-	var w = Array(80);
+	var w = new Array(80);
 	var a =	1732584193;
 	var b = -271733879;
 	var c = -1732584194;
@@ -266,8 +267,7 @@ function binb_sha1(x, len)
 
 		for(var j = 0; j < 80; j++)
 		{
-			if(j < 16) w[j] = x[i + j];
-			else w[j] = bit_rol(w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16], 1);
+			w[j] = (j < 16) ? x[i + j] : bit_rol(w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16], 1);
 			var t = safe_add(safe_add(bit_rol(a, 5), sha1_ft(j, b, c, d)),
 											 safe_add(safe_add(e, w[j]), sha1_kt(j)));
 			e = d;
@@ -283,7 +283,7 @@ function binb_sha1(x, len)
 		d = safe_add(d, oldd);
 		e = safe_add(e, olde);
 	}
-	return Array(a, b, c, d, e);
+	return [a, b, c, d, e];
 
 }
 
@@ -332,11 +332,11 @@ function bit_rol(num, cnt)
 
 
 function _rstrfin(r, rawOrRadix) {
-	if (rawOrRadix === 16 || rawOrRadix === undefined || !rawOrRadix)
+	if (rawOrRadix === 16 || rawOrRadix === undefined || !rawOrRadix) {
 		return rstr2hex(r);
-	else if (rawOrRadix === 64)
+	} else if (rawOrRadix === 64) {
 		return rstr2b64(r);
-	else if (rawOrRadix !== 1 && typeof rawOrRadix === 'number') {
+	} else if (rawOrRadix !== 1 && typeof rawOrRadix === 'number') {
 		if (rawOrRadix < 65)
 			return rstr2any(r, B64CHARS, rawOrRadix);
 		// we could do larger radixes, but we do not have a larger map
@@ -350,10 +350,10 @@ exports.sha1 = function(data, rawOrRadix) {
 		throw new Error('first argument must be a string');
 	r = rstr_sha1(str2rstr_utf8(data));
 	return _rstrfin(r, rawOrRadix);
-}
+};
 exports.sha1_hmac = function(key, data, rawOrRadix) {
 	if (typeof key !== 'string' || typeof data !== 'string')
 		throw new Error('first and second argument must be a string');
-	r = rstr_hmac_sha1(str2rstr_utf8(key), str2rstr_utf8(data))
+	r = rstr_hmac_sha1(str2rstr_utf8(key), str2rstr_utf8(data));
 	return _rstrfin(r, rawOrRadix);
-}
+};

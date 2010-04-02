@@ -249,7 +249,7 @@ exports.setup = function() {
   // Value in the format "host:port"
   var restored, t, previousBackend = oui.cookie.get('__oui_backend');
   if (previousBackend !== undefined && (t = previousBackend.split(':')) && t.length === 2) {
-    var = parseInt(t[1]);
+    t[1] = parseInt(t[1]);
     for (var i=0,b;b=exports.backends[i];++i) {
       if (b.host === t[0] && b.port === t[1]) {
         exports.currentIndex = i;

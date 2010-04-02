@@ -21,7 +21,7 @@ oui.Promise = function(context){
     for (var i=0;i<arguments.length;i++)
       self.resultArgs.push(arguments[i]);
   });
-}
+};
 
 oui.mixin(oui.Promise.prototype, oui.EventEmitter.prototype, {
   addCallback: function(listener) {

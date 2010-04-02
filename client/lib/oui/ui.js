@@ -5,9 +5,9 @@ var ui = exports;
  * Requires two elements to be present in the document:
  *
  *  <modal>
- *    <* class="message"></*>
- *    <* class="description">*</*>
- *    <* class="details"></*>
+ *    <.. class="message"></..>
+ *    <.. class="description">..</..>
+ *    <.. class="details"></..>
  *    <input type="button">
  *  </modal>
  *

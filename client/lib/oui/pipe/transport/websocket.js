@@ -55,7 +55,7 @@ oui.mixin(exports.Transport.prototype, __parent.Transport.prototype, {
   _mkURL: function() {
     var backend = this.backend();
     return (backend.secure ? 'wss' : 'ws')+
-      '://' + backend.host + ':' + backend.port + (backend.path || '')
+      '://' + backend.host + ':' + backend.port + (backend.path || '')+
       this.options.path+ '/' + encodeURIComponent(this.options.channel)+
       '/websocket';
   },
@@ -77,7 +77,7 @@ oui.mixin(exports.Transport.prototype, __parent.Transport.prototype, {
     var socketq = $(this.socket);
     var cleanup = function() {
       socketq.unbind('open',onopen).unbind('error',onerr).unbind('close',onclose);
-    }
+    };
     socketq.one('open', onopen).one('error', onerr).one('close', onclose);
   }
 });

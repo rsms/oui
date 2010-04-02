@@ -5,7 +5,7 @@ exports.set = function(name, value, ttl, path, domain, secure) {
   if (typeof secure === 'undefined') secure = false;
   if (typeof ttl === 'number') {
     expires = new Date();
-    expires.setTime(expires.getTime()+(ttl*1000.0))
+    expires.setTime(expires.getTime()+(ttl*1000.0));
   }
   document.cookie = name + "=" +escape(String(value)) +
     ( ( expires ) ? ";expires=" + expires.toUTCString() : "" ) +
@@ -29,7 +29,7 @@ exports.get = function(name) {
     // and trim left/right whitespace while we're at it
     cookie_name = a_temp_cookie[0].replace(/^\s+|\s+$/g, '');
     // if the extracted name matches passed name
-    if (cookie_name == name) {
+    if (cookie_name === name) {
       b_cookie_found = true;
       // we need to handle case where cookie has no value but exists (no = sign, that is):
       if (a_temp_cookie.length > 1)

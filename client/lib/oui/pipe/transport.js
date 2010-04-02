@@ -17,9 +17,13 @@ exports.Transport = function(options) {
     // port: int,
     // secure: bool
   };
-  if (typeof options === 'object') oui.mixin(this.options, options);
-  else if (typeof options === 'string') this.options.channel = options;
-  else throw new Error('missing channel in options');
+  if (typeof options === 'object') {
+    oui.mixin(this.options, options);
+  } else if (typeof options === 'string') {
+    this.options.channel = options;
+  } else { 
+    throw new Error('missing channel in options');
+  }
 };
 oui.mixin(exports.Transport.prototype, oui.EventEmitter.prototype, {
   // Opens the connection. Returns false if already connected, otherwise true.
@@ -68,16 +72,16 @@ oui.mixin(exports.Transport.prototype, oui.EventEmitter.prototype, {
     } else {
       return this.emit('message', data);
     }
-  },
+  }
 });
 
 // Selects and returns the most appropriate transport for the current host.
 exports.best = function() {
   if (exports._best) return exports._best;
-  for (var i=0, k; k = exports.preferred[i]; i++){
+  for (var i=0, k; (k = exports.preferred[i]); i++){
     var transport = exports[k];
     if (transport && transport.Transport && transport.isUseable())
-      return exports._best = transport.Transport;
+      return (exports._best = transport.Transport);
       // future: to save memory, we _could_ delete all but the best transport.
   }
 };

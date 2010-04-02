@@ -210,8 +210,11 @@ window.oui.mixin(exports.EventEmitter.prototype, {
       listener = once;
       once = false;
     }
-    if (once) $(this.eventTarget || this).one(type, listener);
-    else $(this.eventTarget || this).bind(type, listener);
+    if (once) {
+      $(this.eventTarget || this).one(type, listener);
+    } else {
+      $(this.eventTarget || this).bind(type, listener);
+    }
     return this;
   },
 
