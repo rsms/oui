@@ -56,7 +56,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     var self = this, action = function(cl){
       var url = oui.backend.currentURL()+'/'+remoteName;
       oui.http.request(method, url, params, options, cl);
-    }
+    };
     this.emit('exec-send', remoteName);
     oui.backend.retry(action, function(err, response) {
       self.emit('exec-recv', remoteName);
@@ -77,7 +77,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
         description: 'Failed to connect to the dropular service. Please try again in a few minutes.',
         data: {backends: oui.backend.backends, error: err}
       }, self, err);
-      callback && callback(err);
+      if (callback) callback(err);
     };
     this.get('session/establish', function(err, result) {
       if (err) return onerr(err);
@@ -106,7 +106,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
       delete self.user;
       console.log('[oui] session/signIn: successfully signed out '+prevUser.username);
       self.emit('userchange', prevUser);
-      callback && callback();
+      if (callback) callback();
     });
   },
 
@@ -116,12 +116,12 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     // auth_response = BASE16( SHA1_HMAC( auth_nonce, passhash ) )
     var self = this, cb = function(err, result) {
       if (!err) return callback && callback(null, result);
-      self.app && self.app.emitError({
+      if (self.app) self.app.emitError({
         message: 'Sing in failed',
         description: 'Failed to sign in user "'+username+'"',
         data: {username: username, result: result}
       }, self, err);
-      callback && callback(err, result);
+      if (callback) callback(err, result);
     };
     console.log('[oui] session/signIn: signing in '+username);
     this.get('session/sign-in', {username: username}, function(err, result) {
@@ -157,7 +157,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     console.log('[oui] (session/sign-in) <-- ', params);
     this.post('session/sign-in', params, function(err, result) {
       console.log('[oui] (session/sign-in) --> ', err, result);
-      callback && callback(err, result);
+      if (callback) callback(err, result);
       if (!err && result.user)
         self.setSignedInUser(result.user);
     });
@@ -190,7 +190,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     this._requestSignIn(params, function(err, result) {
       // cache passhash to be able to seamlessly switch backends
       if (!err) result.user.passhash = passhash;
-      callback && callback(err, result);
+      if (callback) callback(err, result);
     });
   },
 
