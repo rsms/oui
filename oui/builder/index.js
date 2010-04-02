@@ -247,6 +247,7 @@ mixin(Source.prototype, {
     if (this._dirty !== undefined)
       return this._dirty;
     if ( !this.stats
+      || this.builder.force
       || !this.stats.mtime
       || (this.cacheFilename && (!this.cacheStats || !this.cacheStats.mtime))
       || (this.stats.mtime > this.cacheStats.mtime)
