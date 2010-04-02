@@ -154,7 +154,7 @@ function mix(ctor) {
   if (arguments.length < 2)
     throw 'too few arguments';
   var mixins = [];
-  var modifier = undefined;
+  var modifier;
 
   if (arguments.length > 2) {
     var i = 1;
@@ -173,10 +173,10 @@ function mix(ctor) {
   }
 
   for (var k in mixins) {
-    var tempCtor = function(){};
-    tempCtor.prototype = mixins[k].prototype;
+    var TempCtor = function(){};
+    TempCtor.prototype = mixins[k].prototype;
     ctor.super_ = mixins[k];
-    ctor.prototype = new tempCtor();
+    ctor.prototype = new TempCtor();
     ctor.prototype.constructor = ctor;
   }
 
@@ -199,7 +199,7 @@ exports.htmlesc = function(s, nl2br) {
   if (nl2br)
     return s.replace(recrlf2, '<br><br>').replace(recrlf1, '<br>');
   return s;
-}
+};
 
 
 exports.EventEmitter = function() {
