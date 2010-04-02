@@ -60,7 +60,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
           break;
         }
       }
-      delete xhr;
+      xhr = null;
     }
 
     // if the client supports xhr.onerror, add event emitter
