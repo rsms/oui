@@ -12,6 +12,7 @@ var basedir = exports.basedir =
 
 function mkbuilder(options, srcDirs) {
   var builder = new Builder();
+  builder.cacheDir = options.no_cache ? undefined : options.cache_dir;
   builder.productsDir = options.output_dir;
   builder.productsName = options.output_name;
   builder.srcDirs = srcDirs;
@@ -45,6 +46,10 @@ function main(argv, options, callback) {
                     {short:'O', def:2, type:'int'}],
     ['once',        'Only build once (do not watch for changes) and exit.',
                     {short:'s'}],
+    ['cache_dir',   'Where to place intermediate build products.',
+                    {short:'C', type:'string', def:'./.build-cache'}],
+    ['no_cache',    'Disable caching of intermediate build products.',
+                    {short:'none'}],
     /*['no_stdlib',   'Do not link with the client standard library.',
                     {short:'N'}],
     ['stdlib_path', 'Custom location of client standard library.',

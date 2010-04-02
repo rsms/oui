@@ -88,7 +88,7 @@ var statable = {
       onlyIfNeeded = undefined;
     }
     var self = this;
-    if ((onlyIfNeeded||onlyIfNeeded===undefined) && this.stats!==undefined) {
+    if ((onlyIfNeeded||onlyIfNeeded===undefined) && this.stats !== undefined) {
       if (callback) callback();
       return;
     }
@@ -135,7 +135,7 @@ mixin(Product.prototype, {
   _write: function(header, footer, callback) {
     var self = this,
         flags = process.O_CREAT | process.O_TRUNC | process.O_WRONLY;
-    fs.open(this.filename, flags, 0666, function (err, fd) {
+    fs.open(this.filename, flags, 0664, function (err, fd) {
       if (err) {
         if (err.message) err.message += " "+sys.inspect(self.filename);
         if (callback) callback(err);
@@ -183,7 +183,10 @@ mixin(Product.prototype, {
     }
 
     // 2nd arg wrote=true
-    if (callback) { var _cb=callback; callback=function(err){_cb(err, true);}; }
+    if (callback) {
+      var _cb = callback;
+      callback = function(err){ _cb(err, true); };
+    }
 
     this.builder.log('writing '+this.filename, 2);
     var self = this;
@@ -243,13 +246,24 @@ mixin(Source.prototype, {
   get dirty() {
     if (this._dirty !== undefined)
       return this._dirty;
-    if (!this.stats || !this.stats.mtime)
+    if ( !this.stats
+      || !this.stats.mtime
+      || (this.cacheFilename && (!this.cacheStats || !this.cacheStats.mtime))
+      || (this.stats.mtime > this.cacheStats.mtime)
+    ) {
       return this._dirty = true;
-    for (var i=0;i<this.products.length;i++) {
-      if (this.products[i].dirty)
-        return this._dirty = true;
     }
     return this._dirty = false;
+  },
+
+  get belongToAnyDirtyProduct() {
+    if (this._belongToAnyDirtyProduct !== undefined)
+      return this._belongToAnyDirtyProduct;
+    for (var i=0;i<this.products.length;i++) {
+      if (this.products[i].dirty)
+        return (this._belongToAnyDirtyProduct = true);
+    }
+    return this._belongToAnyDirtyProduct = false;
   },
 
   get name() {
@@ -270,6 +284,38 @@ mixin(Source.prototype, {
     // LESS and SASS files starting with "_" are included by other files.
     const includableTypes = ['less', 'sass'];
     return (includableTypes.indexOf(this.inputType) !== -1 && this.name.charAt(0) === '_');
+  },
+
+  get cacheFilename() {
+    if (!this.builder.cacheDir) return;
+    return path.join(this.builder.cacheDir, this.name+'.'+this.type);
+  },
+
+  stat: function(onlyIfNeeded, callback){
+    if (typeof onlyIfNeeded === 'function') {
+      callback = onlyIfNeeded;
+      onlyIfNeeded = undefined;
+    }
+    var self = this;
+    if (   (onlyIfNeeded||onlyIfNeeded===undefined)
+        && (!this.cacheFilename || this.cacheStats !== undefined)
+       )
+    {
+      if (callback) callback();
+      return;
+    }
+    if (this.cacheFilename) {
+      var statCountdown = 2;
+      fs.stat(this.cacheFilename, function(err, stats){
+        if (!err) self.cacheStats = stats;
+        if (--statCountdown === 0) callback();
+      });
+      statable.stat.call(this, onlyIfNeeded, function(err, stats){
+        if (--statCountdown === 0) callback();
+      });
+    } else {
+      statable.stat.call(this, onlyIfNeeded, callback);
+    }
   },
 
   /**
@@ -322,8 +368,10 @@ mixin(Source.prototype, {
       if (callback) callback(null, this.content);
       return;
     }
-    var self = this;
-    fs.readFile(this.filename, 'binary', function(err, content) {
+    var filename = this.filename, self = this;
+    if (this.cacheFilename && !self.dirty)
+      filename = this.cacheFilename;
+    fs.readFile(filename, 'utf-8', function(err, content) {
       if (err) {
         if (callback) callback(err);
       }
@@ -335,8 +383,13 @@ mixin(Source.prototype, {
   },
 
   write: function(fd, callback) {
+    var self = this;
     this.loadContent(false, function(err, content){
-      if (!err) fwriteall(fd, content, callback);
+      if (!err) {
+        fwriteall(fd, content, callback);
+        if (self.cacheFilename && self.dirty)
+          fs.writeFile(self.cacheFilename, content);
+      }
       else if (callback) callback(err);
     });
   },
@@ -453,7 +506,7 @@ mixin(Source.prototype, {
         this.content.replace(/[\r\n][\t ]*$/,'\n')+
         '});/*'+this.name+'*/\n';
     }
-    
+
     // Lint (disable with "oui:nolint")
     // Only makes sense when we have a callback.
     if (callback) {
@@ -521,7 +574,7 @@ mixin(Source.prototype, {
 
     if (callback) callback();
   },
-  
+
   _lintJSFormatError: function(e, msg, lines, filenameOrFalseForNoPosition) {
     var reason = e.reason, finfo;
     if (e.raw) {
@@ -566,7 +619,7 @@ mixin(Source.prototype, {
     msg.push('  '+e.evidence);
     msg.push(cli.style('  '+linesAfter.join('\n  '), 'grey'));
   },
-  
+
   _lintJS: function() {
     var options = {
       browser: true, css: true, devel: true, evil: true, forin: true,
@@ -599,6 +652,7 @@ function Builder(srcDirs) {
   this.srcFilter = BUILDER_DEFAULT_SRCFILTER;
   this.productsDir = 'build';
   this.productsName = 'index';
+  this.cacheDir = '.build-cache'; // if not set, no cache is used
   this.sources = [];  // [Source, ..]
   this.products = {}; // {type: Product, ..}
   this.logLevel = 1; // 0: only errors, 1: info and warnings, 2: debug
@@ -706,6 +760,14 @@ mixin(Builder.prototype, {
     }, callback);
   },
 
+  _mkCacheDir: function(callback) {
+    if (this.cacheDir) {
+      fs.mkdirs(this.cacheDir, callback);
+    } else {
+      callback();
+    }
+  },
+
   _mkOutputDirs: function(callback) {
     // mkdirs
     var dirnames = {}, types = Object.keys(this.products);
@@ -744,6 +806,7 @@ mixin(Builder.prototype, {
   all: function(callback) {
     var queue = new util.CallQueue(this, false, callback);
     queue.push([
+      this._mkCacheDir,
       this.collectSources,
       function(cl){ this.emit('collect'); cl(); },
       this.demux,
