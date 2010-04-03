@@ -12,8 +12,10 @@ oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
     var self = this;
     $(function(){
       self.emit('start');
-      if (self.session)
-        self.session.open();
+      if (self.session && self.session.id) {
+        // re-establish session if we have a saved session id
+        self.session.establish();
+      }
     });
     return this;
   },
