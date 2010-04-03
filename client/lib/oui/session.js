@@ -70,7 +70,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
   },
 
   // Open the session
-  open: function(callback) {
+  establish: function(callback) {
     var self = this;
     var onerr = function(err){
       self.app.emitError({
