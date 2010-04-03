@@ -43,7 +43,7 @@ MemoryStore.prototype.findOrSendError = function(params, res, requireUser) {
   if (!params.sid) return res.sendError(400, 'Missing sid in request');
   var session = this.find(params.sid);
   if (!session) return res.sendError(400, 'Invalid session '+params.sid);
-  if (requireUser && (!session.data.user || !session.data.user.id))
+  if (requireUser && !session.data.user)
     return res.sendError(401, 'Unauthorized');
   return session;
 }
