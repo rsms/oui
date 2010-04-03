@@ -206,11 +206,15 @@ mixin(http.ServerResponse.prototype, {
     }
   },
 
-  sendData: function(body) {
+  sendData: function(body, statusCode) {
+    if (typeof statusCode === 'number')
+      this.status = statusCode;
     this.request.sendResponse(body)
   },
 
-  sendObject: function(responseObject) {
+  sendObject: function(responseObject, statusCode) {
+    if (typeof statusCode === 'number')
+      this.status = statusCode;
     var body = this.format(responseObject)
     this.request.sendResponse(body)
   },
