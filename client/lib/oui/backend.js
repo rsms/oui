@@ -86,6 +86,7 @@ exports.retry = function(action, callback) {
   onend = function(prevArgs) {
     console.warn(__name+'.retry: all backends failed. action =>', action);
     if (callback) {
+      if (!$.isArray(prevArgs)) prevArgs = [];
       if (prevArgs.length === 0) {
         prevArgs = [new Error('All backends failed')];
       } else if (!prevArgs[0]) {
