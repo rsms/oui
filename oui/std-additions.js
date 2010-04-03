@@ -52,6 +52,13 @@ Array.prototype.find = function (fun) {
     if (r = fun.call(this, this[i])) return r;
 };
 
+Array.prototype.unique = function() {
+  const x = 1;
+  var i, tag, m = {};
+  for (i=0; (tag = this[i]); ++i) m[tag] = x;
+  return Object.keys(m);
+}
+
 //------------------------------------------------------------------------------
 // String
 
