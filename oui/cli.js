@@ -25,20 +25,29 @@ if (exports.isColorTerminal) {
     'purple'    : ['1;35', '39'],
     'cyan'      : ['1;36', '39'],
     'white'     : ['1;37', '39'],
+    'fg:reset'  : ['39'],
     
     // background color [40-47]
-    'bg:black'     : ['40', '49'],
-    'bg:red'       : ['41', '49'],
-    'bg:green'     : ['42', '49'],
-    'bg:yellow'    : ['43', '49'],
-    'bg:blue'      : ['44', '49'],
-    'bg:purple'    : ['45', '49'],
-    'bg:cyan'      : ['46', '49'],
-    'bg:white'     : ['47', '49'],
+    'bg:black'  : ['40', '49'],
+    'bg:red'    : ['41', '49'],
+    'bg:green'  : ['42', '49'],
+    'bg:yellow' : ['43', '49'],
+    'bg:blue'   : ['44', '49'],
+    'bg:purple' : ['45', '49'],
+    'bg:cyan'   : ['46', '49'],
+    'bg:white'  : ['47', '49'],
+    'bg:reset'  : ['49'],
   };
   exports.style = function(str, style) {
-    var s = styles[style]; if (!s) return str;
-    return '\033[' + s[0] + 'm' + str + '\033[' + s[1] + 'm';
+    var s, r, onlyFirst;
+    if (style === undefined) {
+      style = str;
+      onlyFirst = true;
+    }
+    s = styles[style]; if (!s) return str;
+    r = '\033[' + s[0] + 'm';
+    if (!onlyFirst) r += str + '\033[' + s[1] + 'm';
+    return r;
   }
 } else {
   exports.style = function(str) { return str; }

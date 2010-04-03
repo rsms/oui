@@ -74,10 +74,12 @@ function main(argv, options, callback) {
 
   if (!callback){callback=function(err){
     if (err) {
-      sys.error(cli.style('build failed: ', 'red')+(err.stack || err));
+      sys.print(cli.style('red'));
+      sys.log('build failed: '+cli.style('fg:reset')+(err.stack || err));
       if (options.once) process.exit(1);
     } else {
-      sys.error(cli.style('build OK', 'green'));
+      sys.print(cli.style('green'));
+      sys.log('build OK'+cli.style('fg:reset'));
       if (options.once) process.exit(0);
     }
   }}

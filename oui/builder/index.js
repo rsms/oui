@@ -249,8 +249,11 @@ mixin(Source.prototype, {
     if ( !this.stats
       || this.builder.force
       || !this.stats.mtime
-      || (this.cacheFilename && (!this.cacheStats || !this.cacheStats.mtime))
-      || (this.stats.mtime > this.cacheStats.mtime)
+      || (this.cacheFilename && (!this.cacheStats
+                              || !this.cacheStats.mtime
+                              || (this.stats.mtime > this.cacheStats.mtime)
+                                )
+         )
     ) {
       return this._dirty = true;
     }
@@ -297,24 +300,34 @@ mixin(Source.prototype, {
       callback = onlyIfNeeded;
       onlyIfNeeded = undefined;
     }
-    var self = this;
     if (   (onlyIfNeeded||onlyIfNeeded===undefined)
-        && (!this.cacheFilename || this.cacheStats !== undefined)
+        && (!this.cacheFilename || this.cacheStats)
+        && this.stats
        )
     {
       if (callback) callback();
       return;
     }
+    var self = this;
     if (this.cacheFilename) {
-      var statCountdown = 2;
-      fs.stat(this.cacheFilename, function(err, stats){
-        if (!err) self.cacheStats = stats;
-        if (--statCountdown === 0) callback();
-      });
-      statable.stat.call(this, onlyIfNeeded, function(err, stats){
-        if (--statCountdown === 0) callback();
-      });
+      var statCountdown = 0;
+      if (!self.cacheStats) {
+        statCountdown++;
+        this.builder.log(' stat '+this.cacheFilename, 2);
+        fs.stat(this.cacheFilename, function(err, stats){
+          if (!err) self.cacheStats = stats;
+          if (--statCountdown === 0) callback();
+        });
+      }
+      if (!self.stats) {
+        statCountdown++;
+        this.builder.log(' stat '+this.filename, 2);
+        statable.stat.call(this, onlyIfNeeded, function(err, stats){
+          if (--statCountdown === 0) callback();
+        });
+      }
     } else {
+      this.builder.log(' stat '+this.filename, 2);
       statable.stat.call(this, onlyIfNeeded, callback);
     }
   },
@@ -330,24 +343,42 @@ mixin(Source.prototype, {
     }
     this.builder.log('demuxing '+this, 2);
     if (!Array.isArray(sources)) sources = [];
-    var self = this;
+    var self = this,
+        rcb = new util.RCB(callback),
+        readOrigFileCb;
+    rcb.open();
+    readOrigFileCb = rcb.handle();
     fs.readFile(this.filename, function(err, content) {
       if (err) {
-        if (callback) callback(err);
+        readOrigFileCb(err);
         return;
       }
       var css = [],
-          js = [],
-          addsource = function(type, hunk) {
-            var source = new self.constructor(self.builder,
-              self.filename, self.relname, hunk);
-            source.type = source.inputType = type;
-            if (source.inputType === 'sass' || source.inputType === 'less')
-              source.type = 'css'; // todo: DRY
-            source.stats = self.stats;
-            sources.push(source);
-            self.builder.log('extracted '+source+' from '+self, 2);
+          js = [];
+      var addsource = function(type, hunk) {
+        var source = new self.constructor(self.builder,
+          self.filename, self.relname, hunk);
+        source.type = source.inputType = type;
+        if (source.inputType === 'sass' || source.inputType === 'less')
+          source.type = 'css'; // todo: DRY
+        source.stats = self.stats;
+        sources.push(source);
+        source.builder.log('extracted '+source+' from '+self, 2);
+        // FIXME: currently caching of muxed types is broken.
+        delete source.cacheFilename;
+        if (source.stats) source.stats.mtime = new Date(); // force dirty
+        /*
+        // as this part might be backed up by a cached rep, stat and load rep
+        // if not dirty
+        var cacheHandle = rcb.handle();
+        source.stat(function(){
+          if (source.cacheFilename && !source.dirty) {
+            source.loadContent(true, cacheHandle);
+          } else {
+            cacheHandle();
           }
+        });*/
+      }
       content = extract_hunks(content, HUNK_CSS_START, HUNK_CSS_END,function(h){
         addsource('css', h);
       });
@@ -359,9 +390,22 @@ mixin(Source.prototype, {
       content = extract_hunks(content, HUNK_SASS_START, HUNK_SASS_END,function(h){
         addsource('sass', h);
       });
-      self.content = content;
-      if (callback) callback();
+      // FIXME: currently caching of muxed types is broken.
+      delete self.cacheFilename;
+      if (self.stats) self.stats.mtime = new Date(); // force dirty
+      /*if (self.cacheFilename && !self.dirty) {
+        // in this case, the cached file rep will be thought to be used, so we
+        // need to force load the cached version here. If not, a later call to
+        // write() will cause the non-compiled content to be thought of as
+        // compiled, thus generating broken output. Yes, keeping state is ugly.
+        self.content = undefined;
+        self.loadContent(true, rcb.handle());
+      } else {*/
+        self.content = content;
+      //}
+      readOrigFileCb();
     });
+    rcb.close();
   },
 
   loadContent: function (store, callback) {
@@ -372,6 +416,7 @@ mixin(Source.prototype, {
     var filename = this.filename, self = this;
     if (this.cacheFilename && !self.dirty)
       filename = this.cacheFilename;
+    this.builder.log('loading content for '+this+' from '+filename, 3);
     fs.readFile(filename, 'utf-8', function(err, content) {
       if (err) {
         if (callback) callback(err);
@@ -490,7 +535,10 @@ mixin(Source.prototype, {
 
     if (tangle) {
       this.content = '<module id='+JSON.stringify(this.domname)+'>\n    '+
-        this.content.replace(/^[\r\n\s]+/, '').replace(/[\r\n]/gm, '\n    ').replace(/[\r\n\s]*$/, '\n')+
+        this.content
+          .replace(/^[\r\n\s]+/, '')
+          .replace(/[\r\n]/gm, '\n    ')
+          .replace(/[\r\n\s]*$/, '\n')+
         '  </module>\n';
     }
 
