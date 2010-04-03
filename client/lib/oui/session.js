@@ -13,7 +13,7 @@ exports.Session = function(app, id) {
     app = undefined;
   }
   this.app = app;
-  this.id = id || oui.cookie.get('sid');
+  this.id = id || oui.cookie.get('sid'); // todo: make cookie name configurable
 
   if (console.debug) {
     if (!id && this.id)
