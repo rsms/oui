@@ -1,11 +1,28 @@
+/**
+ * Set a cookie.
+ *
+ * Parameters:
+ *   name   -- name of the cookie. Required.
+ *   value  -- raw value of the cookie (will be passed through escape() before
+ *             stored). Required.
+ *   ttl    -- Time To Love in seconds from Date.now OR a Date object denoting
+ *             exact expiry time. Not used is passed a false value.
+ *   path   -- Base path. Defaults to "/" if undefined. Not used if false.
+ *   domain -- Domain the cookie should be active in. Defaults to current domain
+ *             if undefined. Not used if false.
+ *   secure -- If true, only pass the cookie over secure connections. Defaults
+ *             to false.
+ */
 exports.set = function(name, value, ttl, path, domain, secure) {
   var expires = null;
-  if (typeof path === 'undefined') path = '/';
-  if (typeof domain === 'undefined') domain = document.location.domain;
-  if (typeof secure === 'undefined') secure = false;
+  if (path === undefined) path = '/';
+  if (domain === undefined) domain = document.location.domain;
+  if (secure === undefined) secure = false;
   if (typeof ttl === 'number') {
     expires = new Date();
     expires.setTime(expires.getTime()+(ttl*1000.0));
+  } else if (typeof ttl === 'object' && ttl instanceof Date) {
+    expires = ttl;
   }
   document.cookie = name + "=" +escape(String(value)) +
     ( ( expires ) ? ";expires=" + expires.toUTCString() : "" ) +
