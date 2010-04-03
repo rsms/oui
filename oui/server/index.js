@@ -59,9 +59,8 @@ function requestHandler(req, res) {
       var timespent = ((new Date()).getTime() - dateStarted);
       process.nextTick(function(){
         var r = req,
-        s = '[oui] --> '+r.method+' '+r.path+' (real time spent: '+timespent+' ms)'
-          '\n  HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+
-          res.status + ' ' + http.STATUS_CODES[res.status];
+        s = '[oui] --> '+r.method+' '+r.path+' (real time spent: '+timespent+' ms)'+
+          ' HTTP/'+r.httpVersionMajor+'.'+r.httpVersionMinor+' '+res.status;
         for (var i=0,t; t = res.headers[i];i++) s += '\n  '+t[0]+': '+t[1];
         sys.log(s);
       });
@@ -75,7 +74,8 @@ function requestHandler(req, res) {
         '-', // remote logname of the user // TODO
         '-', // authed username // TODO
         '['+(new Date()).toUTCString()+']',
-        '"'+req.method+' '+req.path+' HTTP/'+(req.httpVersion || '1.1')+'"',
+        '"'+req.method+' '+req.path+' HTTP/'+
+        r.httpVersionMajor+'.'+r.httpVersionMinor+'"',
         res.status,
         res.contentLength
       ].join(' '));
