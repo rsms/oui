@@ -237,7 +237,7 @@ exports.setup = function() {
 
   // sanitize backends
   for (i=0;(b=exports.backends[i]);++i) {
-    if (!b.port) b.port = 80;
+    b.port = b.port ? parseInt(b.port) : 80;
     if (!b.host) {
       throw new Error('inconsistency error in '+__name+
       ' -- backend without host specification');
