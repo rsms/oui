@@ -197,7 +197,7 @@ exports.next = function() {
 };
 
 exports.setup = function() {
-  var b, i, isFile, isLocal;
+  var b, i, isFile, isLocal, sameOriginBackend;
   // setup
   if (window.OUI_BACKEND) {
     // global OUI_BACKEND overrides <backends>
@@ -213,42 +213,22 @@ exports.setup = function() {
     isFile = window.location.protocol === 'file:';
     isLocal = isFile || window.location.hostname.match(
         /(?:\.local$|^(?:localhost|127\.0\.0\.*)$)/);
-
+    sameOriginBackend = {
+      host: isFile ? 'localhost' : window.location.hostname,
+      port: window.location.port || (isLocal ? 8100 : 80),
+      secure: window.location.protocol.indexOf('https') === 0
+    };
     if (isLocal) {
-      var origBackends = exports.backends, localBackends, ports = {};
-      var hostname = isFile ? 'localhost' : window.location.hostname;
-      if (origBackends.length === 0) {
-        var p = window.location.port;
-        origBackends = [{host:'localhost', port:(!p||p===80 ? 8080 : p)}];
-      }
-      localBackends = [0,0]; // first 2 args to array splice later on
-      for (i=0;i<origBackends.length;i++) {
-        var backend = origBackends[i];
-        var port = backend.port || 80;
-        if (!ports[port]) { ports[port] = 1; // unique
-          b = {host:hostname};
-          if (backend.port) b.port = backend.port;
-          if (backend.secure !== undefined) b.secure = backend.secure;
-          localBackends.push(b);
-        }
-      }
-      if (localBackends.length > 2)
-        Array.prototype.splice.apply(exports.backends, localBackends);
-    }
-    // add same-origin fallback
-    // TODO: allow this to be disabled (so that the backends list is never modified)
-    else {
+      exports.backends = [sameOriginBackend];
+      exports.currentIndex = 0;
+    } else {
+      // add same-origin fallback
+      // TODO: allow this to be disabled (so that the backends list is never modified)
       // first, check that the current backend is not already in the list
-      var found = false,
-          sameOriginBackend = {
-            host: window.location.hostname,
-            port: window.location.port||80,
-            secure: window.location.protocol.indexOf('https') !== -1
-          };
+      var found = false;
       for (i=0;(b=exports.backends[i]);++i) {
         if (b.host === sameOriginBackend.host && b.port === sameOriginBackend.port) {
-          found = true;
-          break;
+          found = true; break;
         }
       }
       if (!found) exports.backends.push(sameOriginBackend);
@@ -266,9 +246,7 @@ exports.setup = function() {
     if (!b.url) b.url = jQuery.proxy(backend_url, b);
   }
 
-  if (isLocal) {
-    exports.currentIndex = 0;
-  } else {
+  if (!isLocal) {
     // Restore current backend from browser session (between page reloads).
     // This cookie is transient, lives in browser session)
     // Value in the format "host:port"
