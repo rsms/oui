@@ -9,7 +9,7 @@ window.APP_VERSION = "{#APP_VERSION#}"; // todo: move to oui.app
 // sophisticated client?
 if (   typeof Object.getOwnPropertyNames === 'function'
     && typeof Object.getOwnPropertyDescriptor === 'function'
-    && typeof [].forEach === 'function')
+    && typeof Array.prototype.forEach === 'function')
 {
   window.oui.mixin = function(target) {
     var i = 1, length = arguments.length, source;
@@ -120,6 +120,33 @@ else {
   if (console.group===undefined)console.group=EMPTYFUNC;
   if (console.groupEnd===undefined)console.groupEnd=EMPTYFUNC;
   if (console.assert===undefined)console.assert=EMPTYFUNC;
+  if (Object.prototype.__defineGetter__) {
+    window.OUI_HELP = {
+      sections: {
+        0: // intro
+          "Welcome to OUI",
+        Examples:
+          "  Sending a GET query through session:\n"+
+          "    oui.app.session.get('some/method', function(err, result, resp) {\n"+
+          "      console.log(err, result, resp); });\n"
+      },
+      displayFunc: function () {
+        if (window.OUI_HELP.sections) {
+          var title, haveTitle;
+          for (title in window.OUI_HELP.sections) {
+            haveTitle = String(title).match(/[^0-9]/);
+            if (haveTitle)
+              console.group(title);
+            console.log(window.OUI_HELP.sections[title]);
+            if (haveTitle)
+              console.groupEnd();
+          }
+        }
+        return window.oui;
+      }
+    };
+    window.__defineGetter__("help", window.OUI_HELP.displayFunc);
+  }
 }
 
 /**
