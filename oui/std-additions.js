@@ -106,10 +106,37 @@ String.prototype.linewrap = function(prefix, linewidth, lineglue) {
 mixin(Date, {
   // timestamp should be in milliseconds since the epoch, UTC
   fromUTCTimestamp: function(timestamp) {
-    return new Date(timestamp+(Date.timezoneOffset*60000));
+    return new Date(timestamp+Date.timezoneOffset);
   },
+
+  _calculateOffset: function() {
+    var rightNow = new Date(),
+        date1 = new Date(rightNow.getFullYear(), 0, 1, 0, 0, 0, 0),
+        date2 = new Date(rightNow.getFullYear(), 6, 1, 0, 0, 0, 0),
+        temp = date1.toGMTString(),
+        date3 = new Date(temp.substring(0, temp.lastIndexOf(" ")-1)),
+        temp = date2.toGMTString(),
+        date4 = new Date(temp.substring(0, temp.lastIndexOf(" ")-1));
+    // standard offset, not counting DST
+    Date._timezoneOffsetStd = (date3 - date1);
+    // offset including DST
+    Date._timezoneOffsetDst = (date4 - date2);
+  },
+
+  // Standard offset in milliseconds
   get timezoneOffset() {
-    return Date._timezoneOffset || (Date._timezoneOffset = (new Date).getTimezoneOffset());
+    if (Date._timezoneOffsetStd === undefined) this._calculateOffset();
+    return Date._timezoneOffsetStd;
+  },
+
+  // DST offset in milliseconds
+  get timezoneDSTOffset() {
+    if (Date._timezoneOffsetDst === undefined) this._calculateOffset();
+    return Date._timezoneOffsetDst;
+  },
+
+  get currentUTCTimestamp() {
+    return (new Date()).toUTCTimestamp();
   }
 });
 mixin(Date.prototype, {
@@ -132,7 +159,7 @@ mixin(Date.prototype, {
   get utcYear() { return this.getUTCFullYear() },
 
   toUTCTimestamp: function() {
-    return this.getTime()-(Date.timezoneOffset*60000);
+    return this.getTime()-Date.timezoneOffset;
   },
 
   toUTCComponents: function(){
@@ -147,9 +174,10 @@ mixin(Date.prototype, {
 var sys = require('sys'), assert = require('assert');
 var utcts = 1259431623345;
 var d = Date.fromUTCTimestamp(utcts);
+//sys.puts(d.toISOString())
 assert.equal(d.toISOString(), '2009-11-28T17:07:03.345Z');
-assert.equal(d.toUTCTimestamp(), utcts);
-*/
+assert.equal(d.toUTCTimestamp(), utcts);*/
+
 
 // -------------------------------------------------------------------------
 // fs
