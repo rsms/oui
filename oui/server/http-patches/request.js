@@ -121,11 +121,11 @@ mixin(http.IncomingMessage.prototype, {
 
   /** send response */
   sendResponse: function(body) {
-    var res = this.response
+    var res = this.response;
     if (res.finished)
-      return
+      return;
     if (res.status)
-      res.status = parseInt(res.status)
+      res.status = parseInt(res.status);
     if (res.type !== undefined) {
       var contentType = res.type
       if (res.encoding !== undefined && contentType.indexOf('text/') === 0)
@@ -141,12 +141,11 @@ mixin(http.IncomingMessage.prototype, {
       // HEAD responses must not include an entity
       if (!(res.status === 200 && this.method === 'HEAD'))
         res.write(body, res.encoding)
-    }
-    else {
+    } else {
       if (!bodyless) res.contentLength = 0;
-      res.writeHead()
+      res.writeHead();
     }
-    res.close()
+    res.close();
   },
 
   // request.filename
