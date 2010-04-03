@@ -86,6 +86,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
         return;
       }
       var res = new exports.Response(xhr, self, data);
+      console.debug(__name+' response:', res);
       if (callback)
         callback(null, res);
       if (options && typeof options.success === 'function')
@@ -101,20 +102,28 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
             console.error('remote error ->', res.data.error.stack.join('\n  '));
         } catch(e){}
       }
-      if (callback) {
-        if (!error) {
-          if (res && res.data && res.data.error) {
-            error = new Error('Remote error: '+
-              (res.data.error.message || res.data.error.title));
-          } else {
-            error = new Error('Remote error');
-          }
+      if (res.statusCode !== 0 && res.statusCode < 400) {
+        error = undefined;
+      } else if (!error) {
+        // TODO: get called for any non 2xx response -- FIXME (only 4xx and 5xx is error)
+        if (res && res.data && res.data.error) {
+          error = new Error('Remote error: '+
+            (res.data.error.message || res.data.error.title));
+          if (res.data.error.title)
+            error.type = res.data.error.title;
+        } else {
+          error = new Error('Remote error');
         }
-        callback(error, res);
       }
+      console.debug(__name+' response:', res);
+      if (callback) callback(error, res);
       if (options && typeof options.error === 'function')
         options.error(xhr, textStatus, error, res);
-      self.emit('error', error || textStatus, res);
+      if (error) {
+        self.emit('error', error, res);
+      } else {
+        self.emit('response', res);
+      }
     };
     opts.complete = function(xhr, textStatus){
       if (options && typeof options.complete === 'function')
