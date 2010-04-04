@@ -119,7 +119,7 @@ exports.retry = function(action, callback) {
           exports.reportError(err, backend);
           return again(retries+1, args);
         }
-      } else if (exports.currentIndex > -1) {
+      } else if (exports.currentIndex > -1 && responseOrHTTPCode < 400) {
         var b = exports.backends[exports.currentIndex];
         // keep track of this backend since it seems to work.
         oui.cookie.set('__oui_backend', b.host+':'+b.port);
