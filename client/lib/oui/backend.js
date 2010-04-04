@@ -124,6 +124,7 @@ exports.retry = function(action, callback) {
         // keep track of this backend since it seems to work.
         oui.cookie.set('__oui_backend', b.host+':'+b.port);
       }
+      console.debug(__name+' forwarding response', args);
       if (callback) callback.apply(self, args);
     });
   };
