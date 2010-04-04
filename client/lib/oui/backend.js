@@ -99,6 +99,7 @@ exports.retry = function(action, callback) {
     if (retries === exports.backends.length)
       return onend(prevArgs);
     backend = exports.current();
+    console.debug(__name+' trying '+action);
     action(backend, function(err, responseOrHTTPCode) {
       var args = Array.prototype.slice.call(arguments);
       if (err) {
@@ -107,8 +108,8 @@ exports.retry = function(action, callback) {
         if (typeof responseOrHTTPCode !== 'number')
           responseOrHTTPCode = 0;
         if ((responseOrHTTPCode % 500) < 100) {
-          console.debug(__name+' retrying '+action);
           if (exports.reportError(err, backend)) {
+            console.debug(__name+' retrying '+action);
             return again(retries+1, args);
           } else {
             return onend(prevArgs);
