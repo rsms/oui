@@ -196,8 +196,7 @@ exports.setup = function() {
     // global OUI_BACKENDS overrides <backends>
     exports.backends = $.isArray(window.OUI_BACKENDS) ?
       window.OUI_BACKENDS : [window.OUI_BACKENDS];
-  }
-  else {
+  } else {
     // if file:, prepend localhost with same ports
     isFile = window.location.protocol === 'file:';
     isLocal = isFile || window.location.hostname.match(
