@@ -83,7 +83,11 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
   },
 
   setUser: function(user) {
-    if (user === this.user) return;
+    if (user === this.user) {
+      // always emit userchange
+      this.emit('userchange', user);
+      return;
+    }
     var prevUser = this.user, username;
     this.user = user || undefined; // object if authed
     if (this.user && (username = this.user.canonicalUsername || this.user.username)) {
@@ -231,3 +235,8 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
   }
 
 });
+
+// since app is created before we exist
+if (oui.app) {
+  oui.app.session = new exports.Session(oui.app);
+}

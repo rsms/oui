@@ -1,8 +1,10 @@
 // request additions
-var path = require('path'),
+var sys = require('sys'),
+    path = require('path'),
     http = require('http'),
     querystring = require("querystring"),
-    url = require("url");
+    url = require("url"),
+    authToken = require("../../auth-token");
 
 // HTTP statuses without body
 const BODYLESS_STATUSES = [204,205,304];
@@ -17,8 +19,8 @@ mixin(http.IncomingMessage.prototype, {
     for (var k in m) this.params[k] = m[k];
   },
 
-  // Returns true on success, otherwise a response has been sent.
-  parse: function() {
+  // parse request
+  parse: function(callback) {
     var self = this;
 
     // cookies
@@ -35,12 +37,66 @@ mixin(http.IncomingMessage.prototype, {
       })
     }
 
-    // content
-    this.contentType = this.headers['content-type']
-    this.contentLength = parseInt(this.headers['content-length'] || 0)
-    if (this.method === 'POST' || this.method === 'PUT')
-      this.parseRequestEntity()
-    return true;
+    // note: cookies must be parsed before session
+
+    // session
+    this.parseSession(function(err){
+      if (err) return callback(err); // forward
+
+      // content
+      self.contentType = self.headers['content-type']
+      self.contentLength = parseInt(self.headers['content-length'] || 0)
+      if (self.method === 'POST' || self.method === 'PUT') {
+        try {
+          self.parseRequestEntity();
+        } catch (err) {
+          return callback(err);
+        }
+      }
+
+      // done
+      callback();
+    });
+  },
+
+  parseSession: function (callback) {
+    var server = this.server, sessions = server.sessions;
+    // no sessions?
+    if (!sessions)
+      return callback();
+
+    // Find session id and auth_* cookies
+    var sid = this.cookie(sessions.sidCookieName),
+        auth_token = this.cookie(sessions.authTokenCookieName);
+
+    // abort if no session id or auth_token was passed
+    if (!sid && !auth_token)
+      return callback();
+
+    // Pick up auth_user
+    var auth_user = this.cookie(sessions.authUserCookieName);
+
+    // Find session if sid is set
+    if (sid) this.session = sessions.find(sid);
+
+    // If there is no session (or the session is not authed) -- and auth_token
+    // including auth_user is set -- try to resurrect authenticated user.
+    if ((!this.session || !this.session.data.user) && auth_token && auth_user) {
+      // We require a user prototype to be able to look up the user
+      if (server.userPrototype) {
+        sessions.resurrectAuthedUser(this, sid, auth_token, auth_user, callback);
+        return;
+      } else {
+        // As this is an easy mistake to make during early development, let's
+        // warn the developer.
+        if (server.debug) {
+          sys.log('[oui] warning: request/parseSession: client sent auth_token,'+
+            ' but server.userPrototype is not configured'+
+            ' -- unable to authenticate user');
+        }
+      }
+    }
+    callback();
   },
 
   parseRequestEntity: function() {
@@ -150,9 +206,13 @@ mixin(http.IncomingMessage.prototype, {
     res.close();
   },
 
+  get server() {
+    return this.connection.server;
+  },
+
   // request.filename
   get filename() {
-    var server = this.connection.server;
+    var server = this.server;
     if (this._filename) return this._filename;
     if (!server || !server.documentRoot) return this._filename = null;
     var abspath = path.join(server.documentRoot, this.url.pathname || '');
@@ -161,6 +221,7 @@ mixin(http.IncomingMessage.prototype, {
       return this._filename = abspath;
     return this._filename = null;
   },
+
   set filename(v) {
     this._filename = String(v);
   }

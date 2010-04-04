@@ -104,6 +104,9 @@ String.prototype.linewrap = function(prefix, linewidth, lineglue) {
 // Date
 
 mixin(Date, {
+  distantFuture: new Date((new Date()).getTime()+9000000000000),
+  distantPast: new Date(0),
+  
   // timestamp should be in milliseconds since the epoch, UTC
   fromUTCTimestamp: function(timestamp) {
     return new Date(timestamp+Date.timezoneOffset);

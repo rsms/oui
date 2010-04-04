@@ -1,5 +1,6 @@
-var sys = require("sys");
-var hash = require('../hash');
+var sys = require("sys"),
+    hash = require('../hash'),
+    authToken = require("../auth-token");
 
 function Session(sid, expires) {
   process.EventEmitter.call(this);
@@ -11,6 +12,8 @@ function Session(sid, expires) {
 sys.inherits(Session, process.EventEmitter);
 exports.Session = Session;
 
+// TODO: move most parts into an abstract base prototype, making other kinds of
+//       session backends easier to produce.
 
 function MemoryStore(ttl){
   process.EventEmitter.call(this);
@@ -20,6 +23,15 @@ function MemoryStore(ttl){
 };
 
 sys.inherits(MemoryStore, process.EventEmitter);
+
+mixin(MemoryStore.prototype, {
+  // FIXME If you change these, you'll currently need to hack the oui client lib.
+  sidCookieName: 'sid',
+  authTokenCookieName: 'auth_token',
+  authUserCookieName: 'auth_user',
+  // How long persistent authentication is valid client-side (auth_token etc):
+  authTTL: 30*24*60*60, // 30 days
+})
 
 MemoryStore.prototype.find = function(sid) {
   if (!sid || typeof sid !== 'string')
@@ -126,5 +138,107 @@ MemoryStore.prototype.serialize = function() {
 MemoryStore.prototype.deserialize = function(string) {
   this.sessions = JSON.parse(string);
 };
+
+// resurrect an authenticated user
+MemoryStore.prototype.resurrectAuthedUser = 
+function(req, sid, auth_token, auth_user, callback) {
+  var self = this,
+      server = req.server,
+      queued, queueKey = auth_user+":"+auth_token,
+      queueEntry = {callback: callback, req: req};
+  // As we can be hit by a "thundering herd" of requestes, all containing an
+  // auth_token, we need to mux all requests into one, basically queueing them.
+  if (!this.authedUserResurrectionsInProgress) {
+    this.authedUserResurrectionsInProgress = {};
+  } else {
+    // enqueue callback if there's already an ongoing lookup
+    queued = this.authedUserResurrectionsInProgress[queueKey];
+    if (queued) {
+      queued.entries.push(queueEntry);
+      if (server.debug)
+        sys.log('[oui] session/resurrectAuthedUser: queued user '+auth_user);
+      return;
+    }
+  }
+  
+  // create queue entry
+  queued = {entries: [queueEntry]};
+  this.authedUserResurrectionsInProgress[queueKey] = queued;
+  
+  // This function replaces the single callback with cascading callback
+  var finalize = function(err, callOnEachRequest){
+    var q = self.authedUserResurrectionsInProgress[queueKey];
+    if (q) {
+      q.entries.forEach(function(entry){
+        if (callOnEachRequest)
+          callOnEachRequest(entry.req);
+        entry.callback(err);
+      });
+      delete self.authedUserResurrectionsInProgress[queueKey];
+    }
+  }
+  
+  // Look up user by auth_user
+  server.userPrototype.find(auth_user, function(err, user){
+    if (err) return finalize(err);
+    var sessions = self, session,
+        serverSecret = server.authSecret,
+        ttl = sessions.authTTL,
+        requestFinalizer;
+    if (server.debug) {
+      sys.log('[oui] session/resurrectAuthedUser: '+
+        'trying user '+auth_user+' from auth_token');
+    }
+    // If we found a user with username auth_user, validate auth_token
+    if ( user
+      && user.passhash
+      && authToken.validate(serverSecret, user.passhash, auth_token, ttl) )
+    {
+      // Authenticated user successfully resurrected. Yay.
+      
+      // todo: consider refreshing the auth_token here. Simply
+      //       authToken.generate() and return that as auth_token
+      //       (client lib will handle updating).
+
+      session = req.session;
+
+      // We need a session
+      if (!session) {
+        session = sessions.create();
+        // It's enough one of the queued requests receive a session id cookie,
+        // so let's do it for the first request which was queued (req) and
+        // NOT set it in requestFinalizer
+        req.cookie(sessions.sidCookieName, session.id);
+      }
+      
+      // Assign the user to the session, marking the session as authenticated
+      session.data.user = user;
+      
+      if (server.debug) {
+        sys.log('[oui] session/resurrectAuthedUser: resurrected user '+
+          user.canonicalUsername+' from auth_token.');
+      }
+      
+      // Assign the session to each of the requests
+      requestFinalizer = function(req) {
+        req.session = session;
+      }
+    } else {
+      // No such user or bad auth -- clear session if any
+      if (server.debug) {
+        sys.log('[oui] session/resurrectAuthedUser: '+
+          'failed to resurrect user '+auth_user+' from auth_token');
+      }
+      requestFinalizer = function(req) {
+        if (req.session) {
+          req.session.destroy();
+          if (sid)
+            req.cookie(sessions.sidCookieName, {expires: Date.distantPast});
+        }
+      }
+    }
+    finalize(null, requestFinalizer);
+  });
+}
 
 exports.MemoryStore = MemoryStore;

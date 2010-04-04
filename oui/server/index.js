@@ -121,12 +121,28 @@ function requestHandler(req, res) {
     if (!req.solveRoute())
       return res.sendError(404, req.path+' not found');
 
-    // parse the request (process header, cookies, register body buffer collectors, etc)
-    if (!req.parse())
-      return;
+    // first, pause reading of data since req.parse might abort the request or
+    // delay the process
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      req.paused = true;
+      req.pause();
+    }
 
-    // take action when request is completely received
-    req.addListener('end', function(){ requestCompleteHandler(req, res) });
+    // todo: investigate what happens if the response is send before req.resume
+    //       is called, or if req.resume is never called.
+
+    // parse the request (process header, cookies, register body buffer collectors, etc)
+    req.parse(function(err){
+      if (err) return res.sendError(err);
+      // resume reading of body if the underlying socket was paused
+      if (req.paused) {
+        req.addListener('end', function(){ requestCompleteHandler(req, res) });
+        req.resume();
+      } else {
+        // the request did not include a body
+        requestCompleteHandler(req, res);
+      }
+    });
   }
   catch(exc) {
     return res.sendError(exc)

@@ -20,6 +20,11 @@ function User(username){
   // passhash and such sensitive data.
   // Read-only
   this.authedRepresentation = {username:username, email:"foo@bar.com"};
+  
+  // Canonical username should return a value which is suitable for binary
+  // comparison to other users. I.e. if username lookup is case-insensitive,
+  // this should return the username in all lower or upper case characters.
+  this.canonicalUsername = username;
 
   // Members can be properties instead if you need to perform any processing.
 }

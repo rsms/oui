@@ -53,41 +53,13 @@ var hash = require('../hash'),
 
 exports.session = {
   establish: function(params, req, res) {
-    var self = this,
-        session = this.sessions.findOrCreate(params.sid || req.cookie('sid')),
-        responseObj = {
-          sid: session.id,
-          user: session.data.user,
-        };
-    res.setHeader('Cache-Control', 'no-cache');
-    // if the session is not yet auth, and there was a auth_token in the request,
-    // check the auth:
-    if (!session.data.user) {
-      var auth_ttl = 30*24*60*60; // todo: move somewhere
-      var auth_token = req.cookie('auth_token');
-      var auth_user = req.cookie('auth_user');
-      if (auth_token && auth_user) {
-        this.userPrototype.find(auth_user, function(err, user){
-          if (err) return res.sendError(err);
-          if (user && user.passhash
-            && authToken.validate(self.authSecret, user.passhash, auth_token, auth_ttl))
-          {
-            // Yay. user auth resurrected
-            // todo: consider refreshing the auth_token here. Simply 
-            //       authToken.generate() and return that as auth_token
-            //       (client lib will handle updating).
-            session.data.user = user;
-            responseObj.user = user;
-            if (self.debug) {
-              sys.log('[oui] session/establish: resurrected authenticated user '+
-                user.canonicalUsername+' from auth_token.');
-            }
-          }
-          return res.sendObject(responseObj);
-        });
-        return;
-      }
+    if (!req.session) {
+      req.session = this.sessions.create();
+      req.cookie(this.sessions.sidCookieName, req.session.id);
     }
+    var responseObj = {sid: req.session.id};
+    if (req.session.data.user)
+      responseObj.user = req.session.data.user;
     return responseObj;
   },
 

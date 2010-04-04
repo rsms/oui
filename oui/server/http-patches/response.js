@@ -19,7 +19,7 @@ function patchWriteHead (rsp) {
   rsp.writeHead = function(statusCode, headers) {
     if (statusCode) this.status = statusCode;
     if (headers) this.headers = headers;
-    if (this.request.cookies && this.request.cookies.length)
+    if (this.request.cookies)
       this.addCookieHeaders(this.headers);
     if (this.allowedOrigin)
       this.addACLHeaders(this.headers);
@@ -65,9 +65,9 @@ mixin(http.ServerResponse.prototype, {
     patchWriteHead(this);
   },
 
-  indexOfHeader: function(name) {
+  indexOfHeader: function(name, headers) {
     name = name.toLowerCase();
-    var v = this.headers;
+    var v = headers || this.headers;
     // todo: if (!Array.isArray(this.headers)) ...
     for (var i=0,t; t = v[i]; i++) {
       if (t[0] && String(t[0]).toLowerCase() === name)
@@ -90,10 +90,10 @@ mixin(http.ServerResponse.prototype, {
   },
 
   addCookieHeaders: function(headers) {
-    var ret, name, options, cookies = this.request.cookies
+    var ret, name, options, cookies = this.request.cookies, n = 0;
     for (name in cookies) {
       if (cookies[name].preset)
-        continue // don't re-set pre-set cookies yo
+        continue; // don't re-set pre-set cookies yo
       options = cookies[name]
       ret = name + '=' + encodeURIComponent(options.value)
       if (options.expires)
@@ -104,7 +104,18 @@ mixin(http.ServerResponse.prototype, {
         ret += '; domain=' + options.domain
       if (options.secure)
         ret += '; secure'
-      headers.push(['Set-Cookie', ret])
+      headers.push(['Set-Cookie', ret]);
+      ++n;
+    }
+    // Cookies must not be shared in intermediate HTTP caches:
+    if (n) {
+      var i = this.indexOfHeader('cache-control', headers);
+      if (i !== -1) {
+        if (headers[i][1].toLowerCase() !== 'no-cache')
+          headers[i][1] = 'private';
+      } else {
+        headers.push(['Cache-Control', 'private']);
+      }
     }
     return headers
   },

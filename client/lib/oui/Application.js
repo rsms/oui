@@ -2,19 +2,21 @@
 /** Application */
 exports.Application = function() {
   this.automaticallyPresentsErrors = false;
+  // this.session is set when the session module initialized
 };
 oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
   main: function(){
     if (this._mainCalled) throw new Error('main has already been invoked');
     this._mainCalled = true;
-    this.session = new oui.session.Session(this);
     this.emit('boot');
     var self = this;
     $(function(){
-      self.emit('start');
-      if (self.session && self.session.id) {
-        // re-establish session if we have a saved session id
+      if ((self.session && self.session.id) || oui.cookie.get('auth_token')) {
+        // re-establish session if we have a saved session id, or auth_token
+        self.emit('start', true);
         self.session.establish();
+      } else {
+        self.emit('start', false);
       }
     });
     return this;
