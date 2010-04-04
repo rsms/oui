@@ -48,17 +48,47 @@ exports.static = function(params, req, res) {
 // -----------------------------------------------------------------------------
 // Session
 
-var hash = require('../hash');
+var hash = require('../hash'),
+    authToken = require('../auth-token');
 
 exports.session = {
   establish: function(params, req, res) {
-    var sessions = this.sessions,
-        session = sessions.findOrCreate(params.sid);
+    var self = this,
+        session = this.sessions.findOrCreate(params.sid || req.cookie('sid')),
+        responseObj = {
+          sid: session.id,
+          user: session.data.user,
+        };
     res.setHeader('Cache-Control', 'no-cache');
-    return {
-      sid: session.id,
-      user: session.data.user,
+    // if the session is not yet auth, and there was a auth_token in the request,
+    // check the auth:
+    if (!session.data.user) {
+      var auth_ttl = 30*24*60*60; // todo: move somewhere
+      var auth_token = req.cookie('auth_token');
+      var auth_user = req.cookie('auth_user');
+      if (auth_token && auth_user) {
+        this.userPrototype.find(auth_user, function(err, user){
+          if (err) return res.sendError(err);
+          if (user && user.passhash
+            && authToken.validate(self.authSecret, user.passhash, auth_token, auth_ttl))
+          {
+            // Yay. user auth resurrected
+            // todo: consider refreshing the auth_token here. Simply 
+            //       authToken.generate() and return that as auth_token
+            //       (client lib will handle updating).
+            session.data.user = user;
+            responseObj.user = user;
+            if (self.debug) {
+              sys.log('[oui] session/establish: resurrected authenticated user '+
+                user.canonicalUsername+' from auth_token.');
+            }
+          }
+          return res.sendObject(responseObj);
+        });
+        return;
+      }
     }
+    return responseObj;
   },
 
   // Sanity checks and preparation before a GET or POST to signIn
@@ -95,6 +125,9 @@ exports.session = {
       res.sendError(401, 'Bad credentials');
       return true;
     }
+    // Assign a new authToken to the users session
+    if (session && req.method === 'POST' && user.passhash)
+      session.data.authToken = authToken.generate(this.authSecret, user.passhash);
     // Custom authentication implementation?
     if (typeof user.handleAuthRequest === 'function') {
       // returns true if it took over responsibility
@@ -104,20 +137,29 @@ exports.session = {
 
   // get challenge
   GET_signIn: function(params, req, res) {
-    var self = this, session = this.sessions.findOrCreate(params.sid);
+    if (!this.authSecret)
+      throw new Error('server.authSecret is not set');
+    var self = this, session = this.sessions.findOrCreate(params.sid || req.cookie('sid'));
     if (exports.session._preSignIn.call(this, params, req, res)) return;
     // Clear any "auth_nonce" in session
     if (session.data.auth_nonce) delete session.data.auth_nonce;
     // Find user
-    server.userPrototype.find(params.username, function(err, user){
-      if (exports.session._postSignInFindUser.call(self, params, req, res, err, user, session)) return;
+    this.userPrototype.find(params.username, function(err, user){
+      if (exports.session._postSignInFindUser.call(
+        self, params, req, res, err, user, session)) return;
       // Create and respond with challenge
-      var nonce = hash.sha1_hmac(server.authNonceHMACKey || '?', String(new Date())); // todo
+      var nonce = hash.sha1_hmac(self.authSecret,
+        Date.currentUTCTimestamp.toString(36)+':'+
+        Math.round(Math.random()*616892811).toString(36));
       session.data.auth_nonce = nonce;
       // include username, as it's used to calculate passhash and might be
       // MixEDcAse (depending on the application, usernames might be looked up
       // in a case-insensitive manner).
-      res.sendObject({ nonce: nonce, username: user.username });
+      res.sendObject({
+        nonce: nonce,
+        username: user.username,
+        sid: session.id
+      });
     });
   },
 
@@ -126,15 +168,17 @@ exports.session = {
     // todo: time-limit the auth_nonce
     if (exports.session._preSignIn.call(this, params, req, res)) return;
     var self = this,
-        session = this.sessions.findOrCreate(params.sid),
+        session = this.sessions.findOrCreate(params.sid || req.cookie('sid')),
         success = false;
     // find user
-    server.userPrototype.find(params.username, function(err, user){
-      if (exports.session._postSignInFindUser.call(self, params, req, res, err, user, session)) return;
+    this.userPrototype.find(params.username, function(err, user){
+      // custom handler or error taken care of?
+      if (exports.session._postSignInFindUser.call(
+        self, params, req, res, err, user, session)) return;
 
       // If "auth_nonce" isn't set in session, the client should have performed a GET
       if (!session.data.auth_nonce)
-        return res.sendError(400, 'Bad request: uninitialized session');
+        return res.sendError(400, 'uninitialized_session');
 
       // Keep a local ref of nonce and remove it from the session.
       var nonce = session.data.auth_nonce;
@@ -164,12 +208,22 @@ exports.session = {
             success = (hash.sha1_hmac(nonce, user.passhash) === params.auth_response);
           }
           if (success) {
-            session.data.user = user.sessionRepresentation;
-            res.sendObject({user: user.authedRepresentation});
-            if (server.debug)
+            if (self.debug)
               sys.log('[oui] session/signIn: successfully authenticated user '+params.username);
-            return;
-          } else if (server.debug) {
+            session.data.user = user.sessionRepresentation;
+            var finalize = function(err){
+              if (err) return res.sendError(err);
+              var msg = {user: user.authedRepresentation};
+              if (session.data.authToken)
+                msg.auth_token = session.data.authToken;
+              res.sendObject(msg);
+            };
+            if (typeof user.handleAuthSuccessResponse === 'function') {
+              if (user.handleAuthSuccessResponse(params, req, res, session, finalize))
+                return;
+            }
+            return finalize();
+          } else if (self.debug) {
             sys.log('[oui] session/signIn: bad credentials for user '+params.username);
           }
         }
@@ -181,10 +235,10 @@ exports.session = {
   },
 
   signOut: function(params, req, res) {
-    if (!params.sid)
+    if (!params.sid && !req.cookie('sid'))
       return res.sendError(400, 'Missing sid in request');
     res.setHeader('Cache-Control', 'no-cache');
-    var session = this.sessions.find(params.sid);
+    var session = this.sessions.find(params.sid || req.cookie('sid'));
     if (session && session.data.user)
       delete session.data.user;
     return '';

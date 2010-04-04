@@ -39,10 +39,12 @@ MemoryStore.prototype.findOrCreate = function(sid) {
   return session;
 }
 
-MemoryStore.prototype.findOrSendError = function(params, res, requireUser) {
-  if (!params.sid) return res.sendError(400, 'Missing sid in request');
-  var session = this.find(params.sid);
-  if (!session) return res.sendError(400, 'Invalid session '+params.sid);
+MemoryStore.prototype.findOrSendError = function(params, req, res, requireUser) {
+  // TODO: pick up SID from request headers (Cookie:...)
+  var sid = params.sid || req.cookie('sid');
+  if (!sid) return res.sendError(400, 'Missing sid in request');
+  var session = this.find(sid);
+  if (!session) return res.sendError(400, 'Invalid session '+sid);
   if (requireUser && !session.data.user)
     return res.sendError(401, 'Unauthorized');
   return session;

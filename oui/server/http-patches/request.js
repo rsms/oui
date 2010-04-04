@@ -111,12 +111,14 @@ mixin(http.IncomingMessage.prototype, {
    * Get or set a cookie
    */
   cookie: function(name, val, options){
-    if (val === undefined)
-      return this.cookies[name]
+    if (val === undefined) {
+      val = this.cookies[name];
+      return val ? val.value : val;
+    }
     options = options || {}
     options.value = val
     options.path = options.path || '/'
-    this.cookies[name] = options
+    this.cookies[name] = options;
   },
 
   /** send response */

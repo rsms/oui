@@ -75,7 +75,7 @@ function requestHandler(req, res) {
         '-', // authed username // TODO
         '['+(new Date()).toUTCString()+']',
         '"'+req.method+' '+req.path+' HTTP/'+
-        r.httpVersionMajor+'.'+r.httpVersionMinor+'"',
+        req.httpVersionMajor+'.'+req.httpVersionMinor+'"',
         res.status,
         res.contentLength
       ].join(' '));
@@ -218,11 +218,10 @@ exports.createServer = function() {
   // Limit the size of a request body
   server.maxRequestBodySize = 1024*1024*2; // 2 MB
 
-  // secret key used for nonce creation. you should change this.
-  server.authNonceHMACKey = __filename;
-
   // Standard handlers
   server.enableStandardHandlers = function(sessionPrefix) {
+    if (!this.authSecret)
+      throw new Error('authSecret is not set');
     sessionPrefix = sessionPrefix || '/session';
     this.on('GET', sessionPrefix+'/establish', handlers.session.establish);
     this.on('GET', sessionPrefix+'/sign-in', handlers.session.GET_signIn);

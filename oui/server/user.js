@@ -84,5 +84,40 @@ User.prototype.checkAuthResponse = function(nonce, response) {
 User.prototype.handleAuthRequest = function(params, req, res, session) {
 }
 
+
+/*
+  Optional prototype function "handleAuthSuccessResponse" can be used to
+  implement custom response handling after a user has been successfully
+  authenticated.
+  
+  For instance, you might want to modify the session, perform some kind of
+  logging or update the user itself.
+  
+  If implemented and returning a true value, this function takes over
+  responsibility of sending the response `res` -- failing to do so might cause
+  indefinitely hanging clients. Your implementation can call `finalize` to send
+  and close the response in order to let the default behaviour occur.
+  
+  - params -- contains the parameters in the original request.
+  - req -- the original request.
+  - res -- the to be-finalized response.
+  - session -- the current users session.
+  - finalize -- finalization callback, takes an optional error argument.
+  
+  If your implementation returns true and you perform some kind of custom
+  response sending, you shall _not_ call `finalize`.
+  
+  Remember that if you implemented User.prototype.handleAuthRequest and a call
+  returned true, this method (User.prototype.handleAuthSuccessResponse) will not
+  be called upon automatically -- it will be entirely up to
+  User.prototype.handleAuthRequest to handle the whole transaction.
+  
+  If a true value is returned, this function takes over responsibility for
+  completing the response. If a false value is returned, oui will take care of
+  finalizing the response.
+*/
+User.prototype.handleAuthSuccessResponse = function(params, req, res, session, finalize) {
+}
+
 // The user described above can be used as a dummy user.
 exports.DummyUser = User;
