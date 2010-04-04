@@ -99,7 +99,7 @@ exports.retry = function(action, callback) {
     if (retries === exports.backends.length)
       return onend(prevArgs);
     backend = exports.current();
-    console.debug(__name+' trying '+action);
+    console.debug(__name+' trying '+backend.host+':'+backend.port+' for '+action);
     action(backend, function(err, responseOrHTTPCode) {
       var args = Array.prototype.slice.call(arguments);
       if (err) {
