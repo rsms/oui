@@ -149,9 +149,10 @@ mixin(http.ServerResponse.prototype, {
         }
       }
 
-      // ancillary headers
+      // preflight query response
       if (allowed) {
-        // todo: Access-Control-Allow-Credentials
+        headers.push(['Access-Control-Allow-Credentials', 'true']);
+
         var allowHeaders = reqHeaders['access-control-request-headers']
         if (allowHeaders)
           headers.push(['Access-Control-Allow-Headers', allowHeaders])

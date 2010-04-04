@@ -42,6 +42,14 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
   exec: function(method, remoteName, params, callback) {
     if (typeof params === 'function') { callback = params; params = undefined; }
     var options = {}; // TODO: expose as set:able in exec function call
+    if (typeof params !== 'object')
+      params = {};
+
+    // TODO X activate these if the host env does not fully support xhr.withCredentials
+    /*if (this.id && !params.sid) params.sid = this.id;
+    if (this.authToken && !params.auth_token) params.auth_token = this.authToken;
+    if (this.user && !params.auth_user) params.auth_user = this.user.canonicalUsername;*/
+
     var self = this, action = function(backend, cl){
       var url = backend.url()+'/'+remoteName;
       console.log('url =>',url);
@@ -51,8 +59,17 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     oui.backend.retry(action, function(err, response) {
       self.emit('exec-recv', remoteName);
       if (callback) {
-        if (err) callback(err);
-        else callback(err, response.data, response);
+        if (err) {
+          callback(err);
+        } else {
+          // TODO X activate these if the host env does not fully support xhr.withCredentials
+          /*var d = response.data;
+          if (typeof d === 'object') {
+            if (d.sid) self.setId(d.sid);
+            if (d.auth_token) self.setAuthToken(d.auth_token);
+          }*/
+          callback(err, response.data, response);
+        }
       }
     });
     return this;

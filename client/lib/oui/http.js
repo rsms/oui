@@ -76,6 +76,7 @@ oui.mixin(exports.Request.prototype, oui.EventEmitter.prototype, {
 
     // set handlers here to avoid options to over-write them
     opts.beforeSend = function(xhr){
+      xhr.withCredentials = true;
       if (options && typeof options.beforeSend === 'function')
         options.beforeSend(xhr);
       self.emit('send');

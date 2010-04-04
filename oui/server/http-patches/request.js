@@ -66,15 +66,18 @@ mixin(http.IncomingMessage.prototype, {
       return callback();
 
     // Find session id and auth_* cookies
-    var sid = this.cookie(sessions.sidCookieName),
-        auth_token = this.cookie(sessions.authTokenCookieName);
+    var sid = this.params[sessions.sidCookieName]
+           || this.cookie(sessions.sidCookieName),
+        auth_token = this.params[sessions.authTokenCookieName]
+                  || this.cookie(sessions.authTokenCookieName);
 
     // abort if no session id or auth_token was passed
     if (!sid && !auth_token)
       return callback();
 
     // Pick up auth_user
-    var auth_user = this.cookie(sessions.authUserCookieName);
+    var auth_user = this.params[sessions.authUserCookieName]
+                 || this.cookie(sessions.authUserCookieName);
 
     // Find session if sid is set
     if (sid) this.session = sessions.find(sid);

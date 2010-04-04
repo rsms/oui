@@ -6,7 +6,7 @@ var fs = require('fs'),
 var server = oui.server.start({
   port: 8080,
   documentRoot: path.join(path.dirname(fs.realpathSync(__filename)), 'public'),
-  allowedOrigin: /^https?:\/\/(?:(?:.+\.|)(?:dropular|hunch)\.[^\.]+|localhost|.+\.local)$/,
+  allowedOrigin: /^https?:\/\/(?:(?:.+\.|)(?:dropular|hunch)\.[^\.]+|localhost|.+\.local)(?::[0-9]*|)$/,
 });
 
 // Enable standard functionality (static file handling, sessions, etc).

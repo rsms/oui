@@ -172,7 +172,7 @@ function requestHandler(req, res) {
  *      Allow origins for cross-site requests (CORS)
  *      Example of allowing specific domains, including localhost:
  *      .allowedOrigin = /^https?:\/\/(?:(?:.+\.|)(?:yourdomain|otherdomain)
- *      \.[^\.]+|localhost|.+\.local)$/
+ *      \.[^\.]+|localhost|.+\.local)(?::[0-9]*|)$/
  *
  *   documentRoot = <String>
  *      Document root for serving static files.
