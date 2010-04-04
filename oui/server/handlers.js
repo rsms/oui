@@ -235,10 +235,11 @@ exports.session = {
   },
 
   signOut: function(params, req, res) {
-    if (!params.sid && !req.cookie('sid'))
+    var sid = params.sid || req.cookie('sid');
+    if (!sid)
       return res.sendError(400, 'Missing sid in request');
     res.setHeader('Cache-Control', 'no-cache');
-    var session = this.sessions.find(params.sid || req.cookie('sid'));
+    var session = this.sessions.find(sid);
     if (session && session.data.user)
       delete session.data.user;
     return '';
