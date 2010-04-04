@@ -13,6 +13,7 @@ exports.Session = function(app, id) {
     app = undefined;
   }
   this.app = app;
+  this.ttl = 30*24*60*60; // 30 days
   this.id = id || oui.cookie.get('sid'); // todo: make cookie name configurable
 
   if (console.debug) {
@@ -40,18 +41,6 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
   //   [function callback(Error err, Object result, Response response)] )
   exec: function(method, remoteName, params, callback) {
     if (typeof params === 'function') { callback = params; params = undefined; }
-    if (this.id) {
-      if (typeof params === 'object') {
-        if (!params.sid) {
-          // make a copy
-          var nparams = {sid: this.id};
-          oui.mixin(nparams, params);
-          params = nparams;
-        }
-      } else {
-        params = {sid: this.id};
-      }
-    }
     var options = {}; // TODO: expose as set:able in exec function call
     var self = this, action = function(backend, cl){
       var url = backend.url()+'/'+remoteName;
@@ -69,6 +58,42 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     return this;
   },
 
+  setId: function(sid) {
+    if (this.id === sid) return;
+    var prevSid = this.id;
+    this.id = sid;
+    if (sid) {
+      oui.cookie.set('sid', sid, this.ttl); // todo: make cookie name configurable
+    } else {
+      oui.cookie.clear('sid');
+    }
+    this.emit('id', prevSid);
+  },
+
+  setAuthToken: function(token) {
+    if (this.authToken === token) return;
+    var prevToken = this.authToken;
+    this.authToken = token;
+    if (token) {
+      oui.cookie.set('auth_token', token, Date.distantFuture);
+    } else {
+      oui.cookie.clear('auth_token');
+    }
+    this.emit('auth_token', prevToken);
+  },
+
+  setUser: function(user) {
+    if (user === this.user) return;
+    var prevUser = this.user, username;
+    this.user = user || undefined; // object if authed
+    if (this.user && (username = this.user.canonicalUsername || this.user.username)) {
+      oui.cookie.set('auth_user', username, Date.distantFuture);
+    } else {
+      oui.cookie.clear('auth_user');
+    }
+    this.emit('userchange', prevUser);
+  },
+
   // Open the session
   establish: function(callback) {
     var self = this;
@@ -82,13 +107,10 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     };
     this.get('session/establish', function(err, result) {
       if (err) return onerr(err);
-      self.id = result.sid;
-      oui.cookie.set('sid', self.id);
-      var prevUser = self.user;
-      self.user = result.user || undefined; // object if authed
+      self.setId(result.sid);
+      self.setUser(result.user || undefined);
       console.log('[oui] session/open: established', self.id, result);
       self.emit('open');
-      self.emit('userchange', prevUser);
       return callback && callback();
     });
   },
@@ -103,10 +125,9 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
         self.app.emitError('Sign out failed', self, err);
         return callback && callback(err);
       }
-      var prevUser = self.user;
-      delete self.user;
-      console.log('[oui] session/signIn: successfully signed out '+prevUser.username);
-      self.emit('userchange', prevUser);
+      console.log('[oui] session/signIn: successfully signed out '+
+        self.user.username);
+      self.setUser();
       if (callback) callback();
     });
   },
@@ -159,8 +180,13 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     this.post('session/sign-in', params, function(err, result) {
       console.log('[oui] (session/sign-in) --> ', err, result);
       if (callback) callback(err, result);
-      if (!err && result.user)
+      if (!err && result.user) {
+        if (result.auth_token)
+          self.setAuthToken(result.auth_token);
+        if (result.sid)
+          self.setId(result.sid);
         self.setSignedInUser(result.user);
+      }
     });
   },
 
@@ -176,10 +202,14 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
         return callback(new Error('Unable to satisfy server expectation "'+
           result.expect+'"'), result);
       }
-    } if (!result.username || !result.nonce) {
+    }
+    if (!result.username || !result.nonce) {
       return callback(new Error('Missing "username" and/or "nonce" in response (got: '+
         $.toJSON(result)+')'), result);
     }
+    // refresh sid (it might have changed if the backend session cache was purged)
+    if (result.sid)
+      self.setId(result.sid);
     // use result.username instead of username here since we need the actual,
     // case-sensitive username to calculate the correct response.
     var passhash = oui.hash.sha1(result.username + ":" + password),
@@ -188,11 +218,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
       username: result.username,
       auth_response: auth_response
     };
-    this._requestSignIn(params, function(err, result) {
-      // cache passhash to be able to seamlessly switch backends
-      if (!err) result.user.passhash = passhash;
-      if (callback) callback(err, result);
-    });
+    this._requestSignIn(params, callback);
   },
 
   setSignedInUser: function(user) {
@@ -200,10 +226,8 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
       throw new Error('Invalid argument: user is not an object');
     if (!user.username)
       throw new Error('Data inconsistency: Missing username in user argument');
-    var prevUser = this.user;
-    this.user = user;
-    console.log('[oui] session/signIn: successfully signed in '+this.user.username);
-    this.emit('userchange', prevUser);
+    this.setUser(user);
+    console.log('[oui] session/signIn: successfully signed in '+user.username);
   }
 
 });
