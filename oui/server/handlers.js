@@ -53,10 +53,8 @@ var hash = require('../hash'),
 
 exports.session = {
   establish: function(params, req, res) {
-    if (!req.session) {
-      req.session = this.sessions.create();
-      req.cookie(this.sessions.sidCookieName, req.session.id);
-    }
+    if (!req.session)
+      this.sessions.create(req);
     var responseObj = {sid: req.session.id};
     if (req.session.data.user)
       responseObj.user = req.session.data.user;
@@ -111,10 +109,12 @@ exports.session = {
   GET_signIn: function(params, req, res) {
     if (!this.authSecret)
       throw new Error('server.authSecret is not set');
-    var self = this, session = this.sessions.findOrCreate(params.sid || req.cookie('sid'));
+    var self = this,
+        session = req.session || this.sessions.create(req);
     if (exports.session._preSignIn.call(this, params, req, res)) return;
     // Clear any "auth_nonce" in session
-    if (session.data.auth_nonce) delete session.data.auth_nonce;
+    if (session.data.auth_nonce)
+      session.data.auth_nonce = undefined;
     // Find user
     this.userPrototype.find(params.username, function(err, user){
       if (exports.session._postSignInFindUser.call(
@@ -140,7 +140,7 @@ exports.session = {
     // todo: time-limit the auth_nonce
     if (exports.session._preSignIn.call(this, params, req, res)) return;
     var self = this,
-        session = this.sessions.findOrCreate(params.sid || req.cookie('sid')),
+        session = req.session || this.sessions.create(req),
         success = false;
     // find user
     this.userPrototype.find(params.username, function(err, user){

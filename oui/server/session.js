@@ -45,9 +45,9 @@ MemoryStore.prototype.find = function(sid) {
   return session;
 }
 
-MemoryStore.prototype.findOrCreate = function(sid) {
+MemoryStore.prototype.findOrCreate = function(sid, req) {
   var session = this.find(sid);
-  if (!session) session = this.create();
+  if (!session) session = this.create(req);
   return session;
 }
 
@@ -62,8 +62,10 @@ MemoryStore.prototype.findOrSendError = function(params, req, res, requireUser) 
   return session;
 }
 
-MemoryStore.prototype.create = function(sid) {
-  var session;
+MemoryStore.prototype.create = function(sidOrRequest) {
+  var session, sid, req;
+  if (typeof sidOrRequet === 'object') req = sidOrRequest;
+  else if (typeof sidOrRequest === 'string') sid = sidOrRequest;
   if (!sid) {
     do {
       sid = this.mksid();
@@ -71,7 +73,13 @@ MemoryStore.prototype.create = function(sid) {
   }
   else {
     session = this.sessions[sid]
-    if (session) return session;
+    if (session) {
+      if (req && req.session !== session) {
+        req.session = session;
+        req.cookie(this.sidCookieName, session.id);
+      }
+      return session;
+    }
   }
   var store = this;
   session = new Session(sid);
@@ -93,6 +101,12 @@ MemoryStore.prototype.create = function(sid) {
   this.emit('create', session);
   if (!this.cleanupTimer)
     this.cleanup();
+
+  if (req && req.session !== session) {
+    req.session = session;
+    req.cookie(this.sidCookieName, session.id);
+  }
+
   return session;
 }
 
@@ -204,11 +218,10 @@ function(req, sid, auth_token, auth_user, callback) {
 
       // We need a session
       if (!session) {
-        session = sessions.create();
         // It's enough one of the queued requests receive a session id cookie,
         // so let's do it for the first request which was queued (req) and
         // NOT set it in requestFinalizer
-        req.cookie(sessions.sidCookieName, session.id);
+        session = sessions.create(req);
       }
       
       // Assign the user to the session, marking the session as authenticated
