@@ -64,7 +64,7 @@ MemoryStore.prototype.findOrSendError = function(params, req, res, requireUser) 
 
 MemoryStore.prototype.create = function(sidOrRequest) {
   var session, sid, req;
-  if (typeof sidOrRequet === 'object') req = sidOrRequest;
+  if (typeof sidOrRequest === 'object') req = sidOrRequest;
   else if (typeof sidOrRequest === 'string') sid = sidOrRequest;
   if (!sid) {
     do {
