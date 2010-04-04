@@ -110,11 +110,11 @@ exports.retry = function(action, callback) {
     console.debug(__name+' trying '+backend.host+':'+backend.port+' for '+action);
     action(backend, function(err, responseOrHTTPCode) {
       var args = Array.prototype.slice.call(arguments);
+      if (typeof responseOrHTTPCode === 'object')
+        responseOrHTTPCode = responseOrHTTPCode.statusCode;
+      if (typeof responseOrHTTPCode !== 'number')
+        responseOrHTTPCode = 0;
       if (err) {
-        if (typeof responseOrHTTPCode === 'object')
-          responseOrHTTPCode = responseOrHTTPCode.statusCode;
-        if (typeof responseOrHTTPCode !== 'number')
-          responseOrHTTPCode = 0;
         if ((responseOrHTTPCode % 500) < 100) {
           exports.reportError(err, backend);
           return again(retries+1, args);
