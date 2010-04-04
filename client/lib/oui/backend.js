@@ -24,7 +24,8 @@ if (console.debug) {
 }
 
 exports.current = function() {
-  if (exports.currentIndex === -1) exports.next();
+  if (exports.currentIndex === -1)
+    return exports.next();
   return exports.backends[exports.currentIndex];
 };
 
@@ -44,12 +45,19 @@ var backend_url = function() {
 /**
  * API should use this when a backend stopped answering or caused a permanent
  * error. We will move on to another backend (but only if <backend> is current).
+ *
+ * Returns the next (or current) backend which should be tested/used next.
  */
 exports.reportError = function(error, backend){
   // assure the current backend is the one that did fail
-  if (backend && exports.current() !== backend)
-    return true; // we have already moved from that backend
+  if (backend) {
+    var currBackend = exports.current();
+    if (currBackend !== backend)
+      return currBackend; // we have already moved from that backend
+  }
   if (!error) error = new Error('backend failure');
+  if (backend)
+    error.backend = backend;
   exports.events.emit('error', error, backend);
   return exports.next();
 };
@@ -108,12 +116,8 @@ exports.retry = function(action, callback) {
         if (typeof responseOrHTTPCode !== 'number')
           responseOrHTTPCode = 0;
         if ((responseOrHTTPCode % 500) < 100) {
-          if (exports.reportError(err, backend)) {
-            console.debug(__name+' retrying '+action);
-            return again(retries+1, args);
-          } else {
-            return onend(prevArgs);
-          }
+          exports.reportError(err, backend);
+          return again(retries+1, args);
         }
       } else if (exports.currentIndex > -1) {
         var b = exports.backends[exports.currentIndex];
@@ -126,7 +130,7 @@ exports.retry = function(action, callback) {
   again(0);
 };
 
-// Returns true if moved on to an untested backend, false if wrapped around.
+// Returns the next backend or undefined if no backends
 exports.next = function() {
   /*
   Idea for improvement of load balancing:
@@ -156,7 +160,7 @@ exports.next = function() {
   if (exports.setup !== undefined) {
     exports.setup();
     exports.setup = undefined;
-    return true;
+    return exports.backends[exports.currentIndex];
   }
 
   // round-robin
@@ -165,20 +169,7 @@ exports.next = function() {
   // sanity check
   if (exports.backends.length === 0) {
     console.warn(__name+'.backends is empty');
-    return false;
-  }
-
-  // If the client does not support CORS, make sure we fall back to same-origin.
-  if (!oui.capabilities.cors) {
-    var backend, x = exports.currentIndex;
-    for (i=0; i<exports.backends.length; i++) {
-      if (x === exports.backends.length) x = 0;
-      backend = exports.backends[x];
-      if (backend.host === window.location.host && backend.port === window.location.port) {
-        exports.currentIndex = x;
-        break;
-      }
-    }
+    return;
   }
 
   // wrap around?
@@ -188,13 +179,9 @@ exports.next = function() {
     // fallback to same-origin
     exports.currentIndex = 0;
     exports.events.emit('reset');
-    exports.events.emit('change');
-    return false;
   }
-
   exports.events.emit('change');
-
-  return true;
+  return exports.backends[exports.currentIndex];
 };
 
 exports.setup = function() {
@@ -248,6 +235,17 @@ exports.setup = function() {
   }
 
   if (!isLocal) {
+    // If the client does not support CORS, make sure we only keep same origin
+    if (!oui.capabilities.cors) {
+      var v = [];
+      for (i=0; (b=exports.backends[i]); ++i) {
+        if (b.host === window.location.host && b.port === window.location.port) {
+          v.push(b);
+          break;
+        }
+      }
+      exports.backends = v;
+    }
     // Restore current backend from browser session (between page reloads).
     // This cookie is transient, lives in browser session)
     // Value in the format "host:port"
@@ -267,10 +265,14 @@ exports.setup = function() {
     // In the case there was no previous backend, choose one by random from the first
     // 75%
     if (!restored) {
-      var hi = Math.floor((exports.backends.length-1)*0.75);
-      exports.currentIndex = Math.round(Math.random()*hi);
-      console.debug(__name+' selected a random backend:',
-        exports.backends[exports.currentIndex]);
+      if (exports.backends.length === 1) {
+        exports.currentIndex = 0;
+      } else {
+        var hi = Math.floor((exports.backends.length-1)*0.75);
+        exports.currentIndex = Math.round(Math.random()*hi);
+        console.debug(__name+' selected a random backend:',
+          exports.backends[exports.currentIndex]);
+      }
     }
   }
 
