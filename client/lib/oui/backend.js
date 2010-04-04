@@ -262,13 +262,13 @@ exports.setup = function() {
         }
       }
     }
-    // In the case there was no previous backend, choose one by random from the first
-    // 75%
+    // In the case there was no previous backend, choose one by random from the
+    // top 50%
     if (!restored) {
       if (exports.backends.length === 1) {
         exports.currentIndex = 0;
       } else {
-        var hi = Math.floor((exports.backends.length-1)*0.75);
+        var hi = Math.floor((exports.backends.length-1)*0.5);
         exports.currentIndex = Math.round(Math.random()*hi);
         console.debug(__name+' selected a random backend:',
           exports.backends[exports.currentIndex]);
