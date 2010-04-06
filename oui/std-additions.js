@@ -47,16 +47,80 @@ Object.defineConstant = function (obj, name, value, enumerable, deep) {
 //------------------------------------------------------------------------------
 // Array
 
+/**
+ * Return the first true return value from fun which is called for each value.
+ * fun is called on this and receives a single argument (current value).
+ */
 Array.prototype.find = function (fun) {
   for (var i = 0, r; i < this.length; i++)
     if (r = fun.call(this, this[i])) return r;
 };
 
+/** Return a (possibly new) array which only contains unique values. */
 Array.prototype.unique = function() {
   const x = 1;
   var i, tag, m = {};
   for (i=0; (tag = this[i]); ++i) m[tag] = x;
-  return Object.keys(m);
+  m = Object.keys(m);
+  return (m.length === this.length) ? this : m;
+}
+
+/**
+ * Difference between this and other array.
+ *
+ * Returns a new array with values (or indices if returnIndices) which are not
+ * at the same place.
+ *
+ * Example 1:
+ *
+ *   oldTags = ['computer', 'car'];
+ *   newTags = ['car', 'computer', '80s'];
+ *   oldTags.diff(newTags) --> ['80s']
+ *
+ * Example 2:
+ *
+ *   A = [1, 2, 3, 4, 5]
+ *   B = [1, 2, 6, 4, 5, 6, 7, 8]
+ *   B.diff(A)       => [3]          // values
+ *   B.diff(A, true) => [2]          // indices
+ *   A.diff(B)       => [8, 7, 6, 6] // values
+ *   A.diff(B, true) => [7, 6, 5, 2] // indices
+ */
+Array.prototype.diff = function (other, returnIndices) {
+  var d = [], e = -1, h, i, j, k;
+  for(i = other.length, k = this.length; i--;){
+    for(j = k; j && (h = other[i] !== this[--j]););
+    // The comparator here will be optimized away by V8
+    h && (d[++e] = returnIndices ? i : other[i]);
+  }
+  return d;
+}
+
+/**
+ * Return a new array which contains the intersection of this and any other
+ * array passed as an argument.
+ */
+Array.prototype.intersect = function() {
+  var retArr = [], k1, arr, i, k;
+  arr1keys:
+  for (k1=0,L=this.length; k1<L; ++k1) {
+    arrs:
+    for (i=0; i < arguments.length; ++i) {
+      arr = arguments[i];
+      for (k=0,L=arr.length; k<L; ++k) {
+        if (arr[k] === this[k1]) {
+          if (i === arguments.length-1)
+            retArr[k1] = this[k1];
+          // If the innermost loop always leads at least once to an equal value,
+          // continue the loop until done
+          continue arrs;
+        }
+      }
+      // If it got here, it wasn't found in at least one array, try next value.
+      continue arr1keys;
+    }
+  }
+  return retArr;
 }
 
 //------------------------------------------------------------------------------
@@ -99,6 +163,22 @@ String.prototype.linewrap = function(prefix, linewidth, lineglue) {
   }
   return buf.join(lineglue+prefix);
 }
+
+// by Carlos R. L. Rodrigues
+String.prototype.levenshtein = function(otherString) {
+  var s, l = (s = this.split("")).length,
+      t = (otherString = otherString.split("")).length, i, j, m, n;
+  if(!(l || t)) return Math.max(l, t);
+  for(var a = [], i = l + 1; i; a[--i] = [i]);
+  for(i = t + 1; a[0][--i] = i;);
+  for(i = -1, m = s.length; ++i < m;) {
+    for(j = -1, n = otherString.length; ++j < n;) {
+      a[(i *= 1) + 1][(j *= 1) + 1] = Math.min(a[i][j + 1] + 1,
+        a[i + 1][j] + 1, a[i][j] + (s[i] != otherString[j]));
+    }
+  }
+  return a[l][t];
+};
 
 // -------------------------------------------------------------------------
 // Date
@@ -181,9 +261,14 @@ var d = Date.fromUTCTimestamp(utcts);
 assert.equal(d.toISOString(), '2009-11-28T17:07:03.345Z');
 assert.equal(d.toUTCTimestamp(), utcts);*/
 
+// -------------------------------------------------------------------------
+// http module
+
+// HTTP statuses without body
+require('http').BODYLESS_STATUS_CODES = [204,205,304];
 
 // -------------------------------------------------------------------------
-// fs
+// fs module
 
 /**
  * Collect (find) files and directories matching <filter> in <dirnames>.
