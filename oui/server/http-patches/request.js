@@ -28,7 +28,7 @@ mixin(http.IncomingMessage.prototype, {
 
   // parse request
   parse: function(callback) {
-    var self = this;
+    var self = this, p;
 
     // cookies
     this.cookies = {}
@@ -44,6 +44,20 @@ mixin(http.IncomingMessage.prototype, {
       })
     }
 
+    // Parse content type header
+    if ((self.contentType = self.headers['content-type'])) {
+      self.contentType = self.contentType.toLowerCase();
+      if ((p = self.contentType.indexOf(';')) !== -1) {
+        self.contentType = self.contentType.substr(0, p).trim();
+        // TODO: parse charset if set, and convert characters -- euhm, how do we
+        // do that in nodejs? Yeah, we don't. So probably just respond with 400
+        // telling the client it need to send us ASCII or UTF-8).
+      }
+    }
+
+    // Parse content length header
+    self.contentLength = parseInt(self.headers['content-length'] || 0)
+
     // note: cookies must be parsed before session
 
     // session
@@ -51,8 +65,6 @@ mixin(http.IncomingMessage.prototype, {
       if (err) return callback(err); // forward
 
       // content
-      self.contentType = self.headers['content-type']
-      self.contentLength = parseInt(self.headers['content-length'] || 0)
       if (self.method === 'POST' || self.method === 'PUT') {
         try {
           self.parseRequestEntity();
