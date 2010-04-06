@@ -166,10 +166,10 @@ else {
  * Returns the prototype of ctor.
  */
 window.oui.inherits = function (ctor, superCtor, prototypeMixin) {
-  var tempCtor = function(){};
-  tempCtor.prototype = superCtor.prototype;
+  var TempCtor = function(){};
+  TempCtor.prototype = superCtor.prototype;
   ctor.super_ = superCtor;
-  ctor.prototype = new tempCtor();
+  ctor.prototype = new TempCtor();
   ctor.prototype.constructor = ctor;
   if (prototypeMixin)
     window.oui.mixin(ctor.prototype, prototypeMixin);
