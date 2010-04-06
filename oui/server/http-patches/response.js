@@ -193,7 +193,7 @@ mixin(http.ServerResponse.prototype, {
     else {
       this.status = parseInt(status) || 500
     }
-    e = {title: String(title || 'Error')}
+    e = {title: String(title || http.STATUS_CODES[status] || 'Error')}
     if (exception) {
       e.message = message ? String(message)+' ' : ''
       if (exception.message)
@@ -215,6 +215,17 @@ mixin(http.ServerResponse.prototype, {
     }
     catch(exc) {
       return res.sendError(null, null, msg || '', exc)
+    }
+  },
+
+  // Send a standard response with optional HTTP status code.
+  send: function(statusCode) {
+    if (!statusCode) statusCode = 200;
+    if (http.BODYLESS_STATUS_CODES.indexOf(statusCode)) {
+      this.request.sendResponse();
+    } else {
+      var obj = {status: http.STATUS_CODES[statusCode] || statusCode};
+      this.sendObject(obj);
     }
   },
 

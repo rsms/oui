@@ -6,10 +6,17 @@ var sys = require('sys'),
     url = require("url"),
     authToken = require("../../auth-token");
 
-// HTTP statuses without body
-const BODYLESS_STATUSES = [204,205,304];
-
 mixin(http.IncomingMessage.prototype, {
+  get session() {
+    return this._session;
+  },
+
+  set session(session) {
+    this._session = session;
+    this.authorizedUser = this._session && this._session.data ?
+      this._session.data.user : undefined;
+  },
+
   prepare: function() {
     this.path = this.url;
     this.url = url.parse(this.url, true);
@@ -180,6 +187,46 @@ mixin(http.IncomingMessage.prototype, {
     this.cookies[name] = options;
   },
 
+  /**
+   * Abort and send 401 unless this.authorizedUser is true (has a session with a
+   * valid .data.user).
+   *
+   * Example:
+   *
+   *   GET('/some/path, function(p, req){
+   *     if (req.abortUnlessAuthorized()) return;
+   *     // if we got here, we know for sure this request is authorized
+   *   })
+   *
+   * If validationPredicate is set, it must be a function which will be called
+   * to further verify the user associated with an authorized request.
+   *
+   * Example:
+   *
+   *   function requireSuperUser(user){
+   *     return user.level && user.level > 1;
+   *   }
+   *   GET('/some/path, function(p, req){
+   *     if (req.abortUnlessAuthorized(requireSuperUser)) return;
+   *     // if we got here, we know for sure this request is authorized and
+   *     // the user has a "level" property which is greater than 1.
+   *   })
+   *
+   * Returns a true value if aborted, or a false value if authorized.
+   */
+  abortUnlessAuthorized: function(validationPredicate) {
+    if (this.authorizedUser) {
+      if (typeof validationPredicate === 'function') {
+        if (validationPredicate(this.authorizedUser))
+          return false;
+      } else {
+        return false;
+      }
+    }
+    this.response.sendError(401);
+    return true;
+  },
+
   /** send response */
   sendResponse: function(body) {
     var res = this.response;
@@ -193,7 +240,7 @@ mixin(http.IncomingMessage.prototype, {
         contentType += '; charset='+res.encoding
       res.setHeader('Content-Type', contentType);
     }
-    var bodyless = BODYLESS_STATUSES.indexOf(res.status) !== -1;
+    var bodyless = http.BODYLESS_STATUS_CODES.indexOf(res.status) !== -1;
     if (typeof body === 'string' && !bodyless) {
       res.contentLength = body.length;
       res.writeHead()
