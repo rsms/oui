@@ -68,7 +68,8 @@ window.__defm = function(name, root, html, fun) {
     };
   }
 
-  var module = {}, namep = name.split('.'),
+  var module = {$html: html},
+      namep = name.split('.'),
       curr = root, n, i = 0, L = namep.length-1;
 
   for ( ; i<L; i++) {
@@ -150,66 +151,31 @@ else {
 }
 
 /**
- * Helper for building "classes".
+ * Inherit the prototype methods from one constructor into another.
  *
- *   T(function ctor, [function mixin, ..] [function modifier])
+ * The Function.prototype.inherits from lang.js rewritten as a standalone
+ * function (not on Function.prototype). NOTE: If this file is to be loaded
+ * during bootstrapping this function needs to be revritten using some native
+ * functions as prototype setup using normal JavaScript does not work as
+ * expected during bootstrapping (see mirror.js in r114903).
  *
- * Example:
+ * @param {function} ctor Constructor function which needs to inherit the prototype.
+ * @param {function} superCtor Constructor function to inherit prototype from.
+ * @param {object} prototypeMixin Optional object to mix in with the prototype.
  *
- *   function Animal(yearsOld){
- *     this.yearsOld = yearsOld || 4;
- *   }
- *   mix(Animal, function(P){
- *     P.daysOld = function() {
- *       return this.yearsAged * 365;
- *     }
- *   });
- *
- *   function Monkey(name, yearsOld){
- *     this.name = name;
- *     this.yearsOld = yearsOld;
- *   }
- *   mix(Monkey, Animal, Mammal, function(P){
- *     P.sayHello = function() {
- *       alert("Hello, my name is "+this.name+" and I'm "+this.daysOld()+" days old.");
- *     }
- *   });
- *   var m = new Monkey();
+ * Returns the prototype of ctor.
  */
-// TODO: replace with inherits
-function mix(ctor) {
-  if (arguments.length < 2)
-    throw 'too few arguments';
-  var mixins = [];
-  var modifier;
+window.oui.inherits = function (ctor, superCtor, prototypeMixin) {
+  var tempCtor = function(){};
+  tempCtor.prototype = superCtor.prototype;
+  ctor.super_ = superCtor;
+  ctor.prototype = new tempCtor();
+  ctor.prototype.constructor = ctor;
+  if (prototypeMixin)
+    window.oui.mixin(ctor.prototype, prototypeMixin);
+  return ctor.prototype;
+};
 
-  if (arguments.length > 2) {
-    var i = 1;
-    for (;i<arguments.length-1;i++)
-      mixins.push(arguments[i]);
-    modifier = arguments[i];
-  }
-  else { // exactly 2 arguments
-    modifier = arguments[1];
-  }
-
-  if (modifier && modifier.constructor !== EMPTYFUNC.constructor) {
-    // last argument is not an anonymous function, so it's probably a mix-in.
-    mixins.push(modifier);
-    modifier = null;
-  }
-
-  for (var k in mixins) {
-    var TempCtor = function(){};
-    TempCtor.prototype = mixins[k].prototype;
-    ctor.super_ = mixins[k];
-    ctor.prototype = new TempCtor();
-    ctor.prototype.constructor = ctor;
-  }
-
-  if (modifier)
-    modifier(ctor.prototype);
-}
 
 // URL encode
 exports.urlesc = function(s) { return encodeURIComponent(String(s)); };
