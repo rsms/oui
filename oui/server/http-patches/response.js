@@ -31,10 +31,10 @@ function patchWriteHead (rsp) {
 }
 
 // monkey patch close to emit an 'end' event.
-var _http_OutgoingMessage_close = http.OutgoingMessage.prototype.close
+var _http_OutgoingMessage_end = http.OutgoingMessage.prototype.end
 mixin(http.OutgoingMessage.prototype, {
-  close: function() {
-    _http_OutgoingMessage_close.call(this);
+  end: function(data, encoding) {
+    _http_OutgoingMessage_end.call(this, data, encoding);
     this.emit("end");
   }
 });
@@ -304,7 +304,7 @@ mixin(http.ServerResponse.prototype, {
         }
         else {
           // Response already begun
-          res.close();
+          res.end();
         }
         callback(error);
       }
@@ -341,11 +341,11 @@ mixin(http.ServerResponse.prototype, {
       // send headers
       res.chunked_encoding = false;
       res.writeHead();
-      res.flush();
       if (match_status) {
-        res.close();
+        res.end();
         return callback(null, 0);
       }
+      res.flush();
 
       // forward
       var enc = 'binary', rz = 8*1024;
@@ -361,7 +361,7 @@ mixin(http.ServerResponse.prototype, {
               readChunk();
             }
             else { // EOF
-              res.close();
+              res.end();
               fs.close(fd, function (err) {
                 if (err) errorClosure(err);
                 else callback(err, pos);

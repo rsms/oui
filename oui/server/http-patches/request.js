@@ -265,7 +265,7 @@ mixin(http.IncomingMessage.prototype, {
       if (!bodyless) res.contentLength = 0;
       res.writeHead();
     }
-    res.close();
+    res.end();
   },
 
   get server() {

@@ -421,14 +421,14 @@ mixin(Source.prototype, {
     var filename = this.filename, self = this;
     if (this.cacheFilename && !self.dirty)
       filename = this.cacheFilename;
-    this.builder.log('loading content for '+this+' from '+filename, 3);
+    this.builder.log('loading content for '+this+' from '+filename, 2);
     fs.readFile(filename, 'utf-8', function(err, content) {
       if (err) {
         if (callback) callback(err);
       }
       else {
         if (store) self.content = content;
-        callback(null, content);
+        if (callback) callback(null, content);
       }
     });
   },
@@ -611,6 +611,8 @@ mixin(Source.prototype, {
           }
         }
       }
+    } else {
+      self.builder.log('WARNING no callback passed to _compileJS', 2);
     }
 
     // Optimize (disable with "oui:unoptimized")

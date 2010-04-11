@@ -87,16 +87,16 @@ function requestHandler(req, res) {
   req.prepare()
   res.prepare()
 
-  // Register res.close to be called when/if the client disconnects
+  // Register res.end to be called when/if the client disconnects
   var onClientDisconnect;
   if (this.debug) {
     onClientDisconnect = function(){
       sys.log('[oui] '+req.connection.remoteAddress+':'+
         req.connection.remotePort+' disconnected during response construction');
-      if (!res.finished) res.close();
+      if (!res.finished) res.end();
     };
   } else {
-    onClientDisconnect = function(){ if (!res.finished) res.close(); };
+    onClientDisconnect = function(){ if (!res.finished) res.end(); };
   }
   req.connection.addListener('end', onClientDisconnect);
   // Make sure the listener does not linger after the response is complete

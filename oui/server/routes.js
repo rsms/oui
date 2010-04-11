@@ -1,3 +1,4 @@
+var querystring = require('querystring');
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
 
 exports.Routes = function() {

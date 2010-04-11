@@ -1,5 +1,9 @@
 var sys = require('sys');
 
+function dbgstack() {
+  return (new Error()).stack.split(/\n/).slice(3).join('\n').trim();
+}
+
 // Recursive closure
 function RCB(depth, callback) {
   if (typeof depth === 'function') {
@@ -10,14 +14,15 @@ function RCB(depth, callback) {
     depth = 0;
   }
 
+  //this.debug = true;
   this.depth = depth;
   this.callback = callback;
   var self = this;
 
   // close (decr)
   this.close = function(err) {
-    //sys.debug('close('+err+')  '+self.depth)
     if (err) self.depth = 0; else self.depth--;
+    if(self.debug) sys.debug('close('+err+')  '+self.depth+' '+dbgstack())
     if (self.depth === 0) {
       self.depth = -1;
       if (self.callback)
@@ -27,15 +32,15 @@ function RCB(depth, callback) {
   }
 
   this.open = function(){
-    //sys.debug('open()  '+self.depth)
     self.depth++;
+    if(self.debug) sys.debug('open()  '+self.depth+' '+dbgstack())
     return self;
   }
 
   // produce a callback (which must be called)
   this.handle = function(cb2){
-    //sys.debug('open()  '+self.depth)
     self.depth++;
+    if(self.debug) sys.debug('handle()  '+self.depth+' '+dbgstack())
     if (cb2) {
       return function() {
         var args = Array.prototype.slice.call(arguments);
