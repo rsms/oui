@@ -140,8 +140,11 @@ exports.session = {
     // todo: time-limit the auth_nonce
     if (exports.session._preSignIn.call(this, params, req, res)) return;
     var self = this,
-        session = req.session || this.sessions.create(req),
+        session = req.session,
         success = false;
+    // need to have a valid session
+    if (!session)
+      return res.sendError(400, 'session not found');
     // find user
     this.userPrototype.find(params.username, function(err, user){
       // custom handler or error taken care of?
@@ -150,7 +153,7 @@ exports.session = {
 
       // If "auth_nonce" isn't set in session, the client should have performed a GET
       if (!session.data.auth_nonce)
-        return res.sendError(400, 'uninitialized_session');
+        return res.sendError(400, 'session not initialized');
 
       // Keep a local ref of nonce and remove it from the session.
       var nonce = session.data.auth_nonce;
