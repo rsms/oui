@@ -59,17 +59,14 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     oui.backend.retry(action, function(err, response) {
       self.emit('exec-recv', remoteName);
       if (callback) {
-        if (err) {
-          callback(err);
-        } else {
-          // TODO X activate these if the host env does not fully support xhr.withCredentials
-          /*var d = response.data;
-          if (typeof d === 'object') {
-            if (d.sid) self.setId(d.sid);
-            if (d.auth_token) self.setAuthToken(d.auth_token);
-          }*/
-          callback(err, response.data, response);
-        }
+        callback(err, response.data, response);
+        // TODO X activate these if the host env does not fully support xhr.withCredentials
+        // if not err:
+        /*var d = response.data;
+        if (typeof d === 'object') {
+          if (d.sid) self.setId(d.sid);
+          if (d.auth_token) self.setAuthToken(d.auth_token);
+        }*/
       }
     });
     return this;
