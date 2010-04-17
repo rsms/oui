@@ -80,7 +80,6 @@ function findByStrictPath(path) {
 }
 
 function onHashChange() {
-  console.warn('onHashChange', (new Error()).stack);
   var prevPath = exports.path,
       params = {}, routes;
   exports.path = document.location.hash.substr(1);
@@ -192,7 +191,6 @@ function _init() {
 	if ("onhashchange" in window) {
 		$(window).bind('hashchange', function(){
 		  if (exports._prevhash !== document.location.hash){
-		    console.log('ANCHOR CHANGE1', exports._prevhash, '-->', document.location.hash);
 				exports._prevhash = document.location.hash;
 				onHashChange();
 			}
@@ -201,7 +199,6 @@ function _init() {
 	  exports._prevhash = '';
 		setInterval(function(){
 			if (exports._prevhash !== document.location.hash){
-			  console.log('ANCHOR CHANGE2', exports._prevhash, '-->', document.location.hash);
 				exports._prevhash = document.location.hash;
 				onHashChange();
 			}
