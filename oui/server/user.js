@@ -124,5 +124,14 @@ User.prototype.handleAuthRequest = function(params, req, res, session) {
 User.prototype.handleAuthSuccessResponse = function(params, req, res, session, finalize) {
 }
 
+/**
+ * If defined, this is called after a user has been successfully authenticated
+ * using resurrected credentials (from a valid auth_token).
+ *
+ * Return true to indicate you take responsibility of calling `finalize`.
+ */
+User.prototype.onAuthResurrected = function(finalize) {
+}
+
 // The user described above can be used as a dummy user.
 exports.DummyUser = User;

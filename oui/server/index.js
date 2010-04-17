@@ -204,7 +204,9 @@ exports.createServer = function() {
 
   // URL routing
   server.routes = new Routes();
-  server.on = function(methods, path, priority, handler) {
+  server.__proto__.on = function(methods, path, priority, handler) {
+    if (this.pathPrefix && typeof path === 'string')
+      path = this.pathPrefix + '/' + path.replace(/^\/+/, '');
     methods = Array.isArray(methods) ? methods : [methods];
     for (var i=0,L=methods.length;i<L;i++) {
       var method = methods[i];
@@ -224,6 +226,8 @@ exports.createServer = function() {
 
   // File to look for when requesting a directory
   server.indexFilenames = ['index.html'];
+  
+  server.pathPrefix = '/';
 
   // List of request content types we will buffer before parsing
   server.bufferableRequestTypes = [
@@ -238,7 +242,11 @@ exports.createServer = function() {
   server.enableStandardHandlers = function(sessionPrefix) {
     if (!this.authSecret)
       throw new Error('authSecret is not set');
-    sessionPrefix = sessionPrefix || '/session';
+    if (!sessionPrefix) {
+      sessionPrefix = '/session';
+    } else {
+      sessionPrefix = '/'+sessionPrefix.replace(/^\/+|\/+$/, '');
+    }
     this.on('GET', sessionPrefix+'/establish', handlers.session.establish);
     this.on('GET', sessionPrefix+'/sign-in', handlers.session.GET_signIn);
     this.on('POST', sessionPrefix+'/sign-in', handlers.session.POST_signIn);
@@ -272,5 +280,6 @@ exports.start = function(options) {
     server.listen(parseInt(opt.port), opt.addr);
   server.verbose && sys.log('['+module.id+'] listening on '+
     (opt.addr || '0.0.0.0')+':'+opt.port);
+  server.pathPrefix = server.pathPrefix.replace(/\/+$/, '');
   return server;
 }

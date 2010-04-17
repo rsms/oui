@@ -236,6 +236,15 @@ function(req, sid, auth_token, auth_user, callback) {
       requestFinalizer = function(req) {
         req.session = session;
       }
+      
+      if (typeof user.onAuthResurrected === 'function') {
+        var deferredFinalizer = function(err){finalize(err, requestFinalizer);}
+        if (user.onAuthResurrected(deferredFinalizer)) {
+          // took responsibilty for calling deferredFinalizer
+          return;
+        }
+      }
+      
     } else {
       // No such user or bad auth -- clear session if any
       if (server.debug) {

@@ -43,7 +43,7 @@ function main(argv, options, callback) {
     ['output_name', 'Product(s) filename (excluding file extension).',
                     {short:'n', type:'string', def:'index'}],
     ['optimize',    'Compiler optimization level [0-3].',
-                    {short:'O', def:2, type:'int'}],
+                    {short:'O', def:0, type:'int'}],
     ['once',        'Only build once (do not watch for changes) and exit.',
                     {short:'s'}],
     ['cache_dir',   'Where to place intermediate build products.',

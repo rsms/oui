@@ -111,7 +111,8 @@ if (window.console === undefined || !window.oui.debug) {
     error:EMPTYFUNC,
     group:EMPTYFUNC,
     groupEnd:EMPTYFUNC,
-    assert:EMPTYFUNC
+    assert:EMPTYFUNC,
+    debug:EMPTYFUNC
   };
 }
 else {
@@ -121,6 +122,7 @@ else {
   if (console.group===undefined)console.group=EMPTYFUNC;
   if (console.groupEnd===undefined)console.groupEnd=EMPTYFUNC;
   if (console.assert===undefined)console.assert=EMPTYFUNC;
+  if (console.debug===undefined)console.debug=EMPTYFUNC;
   if (Object.prototype.__defineGetter__) {
     window.OUI_HELP = {
       sections: {

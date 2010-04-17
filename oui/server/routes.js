@@ -21,6 +21,17 @@ exports.Routes.prototype.solve = function(req) {
   }
 }
 
+exports.Routes.prototype.toString = function() {
+  var m, v, s = [];
+  for (m in this.map) {
+    this.map[m].forEach(function(t){
+      s.push(m+'\t'+t[1]+'  (!'+t[0]+')');
+    });
+    s.push('');
+  }
+  return s.join('\n');
+}
+
 METHODS.forEach(function(method){
   exports.Routes.prototype[method] = function(path, priority, handler){
     if (typeof priority === 'function') {
@@ -44,6 +55,9 @@ function FixedStringMatch(string, caseSensitive) {
 }
 FixedStringMatch.prototype.exec = function(str) {
   return this.caseSensitive ? (str === this.string) : (str.toLowerCase() === this.string);
+}
+FixedStringMatch.prototype.toString = function() {
+  return this.string;
 }
 
 
@@ -116,4 +130,13 @@ exports.Route.prototype.extractParams = function(req, matches) {
   for (i=0, l = matches.length; i < l; i++)
     captures[i] = querystring.unescape(matches[i], true);
   req.params.captures = captures;
+}
+
+exports.Route.prototype.toString = function() {
+  var s = String(this.path);
+  if (this.keys && this.keys.length)
+    s += '  {'+this.keys+'}';
+  if (this.handler)
+    s += ' -> <function>';
+  return s;
 }

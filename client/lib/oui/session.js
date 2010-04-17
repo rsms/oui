@@ -51,7 +51,7 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
     if (this.user && !params.auth_user) params.auth_user = this.user.canonicalUsername;*/
 
     var self = this, action = function(backend, cl){
-      var url = backend.url()+'/'+remoteName;
+      var url = backend.url()+'/'+remoteName.replace(/^\/+/, '');
       console.log('url =>',url);
       oui.http.request(method, url, params, options, cl);
     };

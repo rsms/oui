@@ -35,10 +35,13 @@ exports.currentURL = function() {
     return backend.url();
 };
 
+exports.defaultPath = '/';
+
 var backend_url = function() {
   var url = (this.secure ? 'https://' : 'http://')+
     this.host + ':' + this.port;
-  if (this.path) url += this.path;
+  if (this.path) url += this.path.replace(/\/+$/, '');
+  else url += exports.defaultPath.replace(/\/+$/, '');
   return url;
 };
 
