@@ -4,7 +4,7 @@ exports.Application = function() {
   this.automaticallyPresentsErrors = false;
   // this.session is set when the session module initialized
 };
-oui.mixin(exports.Application.prototype, oui.EventEmitter.prototype, {
+oui.inherits(exports.Application, oui.EventEmitter, {
   main: function(){
     if (this._mainCalled) throw new Error('main has already been invoked');
     this._mainCalled = true;

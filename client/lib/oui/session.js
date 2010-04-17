@@ -2,8 +2,14 @@
  * Represents a client-server session.
  *
  * Events:
- *  - open () -- when the session is open
- *  - userchange (previousUser) -- when authenticated user has changed
+ *  - open () -- when the session is open.
+ *  - userchange (previousUser) -- when authenticated user has changed.
+ *  - id (prevID) -- when session id changed.
+ *  - auth_token (prevAuthToken) -- when auth_token changed.
+ *  - exec-send (remoteName) -- when a remote call started.
+ *  - exec-recv (remoteName) -- when a remote call completed.
+ *  - busy () -- when transitioning from "idle" to "busy" mode (ie remote calls in flight).
+ *  - idle () -- when transitioning from "busy" ro "idle" mode (ie no remote calls in flight).
  *
  * Session([[app, ]id])
  */
@@ -15,7 +21,7 @@ exports.Session = function(app, id) {
   this.app = app;
   this.ttl = 30*24*60*60; // 30 days
   this.id = id || oui.cookie.get('sid'); // todo: make cookie name configurable
-
+  this.rpcInFlightCount = 0;
   if (console.debug) {
     if (!id && this.id)
       console.debug('[oui] session: loaded session id =>', this.id);
@@ -25,7 +31,7 @@ exports.Session = function(app, id) {
   }
 };
 
-oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
+oui.inherits(exports.Session, oui.EventEmitter, {
 
   // Execute a remote function which is idempotent.
   get: function(remoteName, params, callback) {
@@ -56,8 +62,12 @@ oui.mixin(exports.Session.prototype, oui.EventEmitter.prototype, {
       oui.http.request(method, url, params, options, cl);
     };
     this.emit('exec-send', remoteName);
+    if ((++this.rpcInFlightCount) === 1)
+      self.emit('busy');
     oui.backend.retry(action, function(err, response) {
       self.emit('exec-recv', remoteName);
+      if ((--self.rpcInFlightCount) === 0)
+        self.emit('idle');
       if (callback) {
         callback(err, response.data, response);
         // TODO X activate these if the host env does not fully support xhr.withCredentials

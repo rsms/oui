@@ -197,8 +197,7 @@ exports.htmlesc = function(s, nl2br) {
 };
 
 
-exports.EventEmitter = function() {
-};
+exports.EventEmitter = function() {};
 window.oui.mixin(exports.EventEmitter.prototype, {
   addListener: function(type, once, listener) {
     if (typeof once === 'function') {
@@ -215,6 +214,10 @@ window.oui.mixin(exports.EventEmitter.prototype, {
 
   on: function(type, once, listener) {
     return this.addListener(type, once, listener);
+  },
+
+  one: function(type, listener) {
+    return this.addListener(type, true, listener);
   },
 
   removeListener: function(type, listener) {

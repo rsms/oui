@@ -1,3 +1,14 @@
+// The module emit events
+exports.events = new oui.EventEmitter();
+
+/*
+Events emitted by exports.events:
+  change (ev, String currentPath, Array routes)
+    Called when hash changes, before calling routes
+  changed (ev, String currentPath, Array routes)
+    Called when hash changed, after calling routes
+*/
+
 // Map of path => element ( => [handler, ...] )
 exports.routes = [];
 
@@ -15,11 +26,14 @@ exports.on = function(path, priority, handler){
   exports.routes.push([priority, handler]);
   exports.routes.sort(function(a,b){ return b[0]-a[0]; });
   handler.isIndex = (path === '' || (typeof path.test === 'function' && path.test('') === true));
-  if (handler.isIndex && document.location.hash.substr(1) === '')
+  if (handler.isIndex && document.location.hash.substr(1) === '') {
     exports.path = undefined; // force update
-	onHashChange();
+	  onHashChange();
+  }
   return handler;
 };
+
+exports.enableMultiRoutes = false;
 
 exports.solve = function(path, params) {
   var route, matches, routes = [];
@@ -29,6 +43,7 @@ exports.solve = function(path, params) {
       if (params && Array.isArray(matches) && matches.length)
         route.extractParams(params, matches);
       routes.push(route);
+      if (!exports.enableMultiRoutes) break;
     }
   }
   return routes;
@@ -65,11 +80,13 @@ function findByStrictPath(path) {
 }
 
 function onHashChange() {
+  console.warn('onHashChange', (new Error()).stack);
   var prevPath = exports.path,
       params = {}, routes;
   exports.path = document.location.hash.substr(1);
   if (prevPath === exports.path) return;
   routes = exports.solve(exports.path, params);
+  exports.events.emit('change', exports.path, routes);
   for (var i=0; (route = routes[i]); ++i) {
     try {
       route.handler(params, exports.path, prevPath);
@@ -77,6 +94,7 @@ function onHashChange() {
 			console.error('['+__name+'] error when calling handler', route.handler, e.stack || e);
 		}
 	}
+	exports.events.emit('changed', exports.path, routes);
 }
 
 function isRegExp(obj) {
@@ -170,20 +188,30 @@ exports.Route.prototype.extractParams = function(params, matches) {
 
 
 function _init() {
+  exports._prevhash = '';
 	if ("onhashchange" in window) {
-		$(window).bind('hashchange', onHashChange);
+		$(window).bind('hashchange', function(){
+		  if (exports._prevhash !== document.location.hash){
+		    console.log('ANCHOR CHANGE1', exports._prevhash, '-->', document.location.hash);
+				exports._prevhash = document.location.hash;
+				onHashChange();
+			}
+		});
 	} else {
 	  exports._prevhash = '';
 		setInterval(function(){
 			if (exports._prevhash !== document.location.hash){
+			  console.log('ANCHOR CHANGE2', exports._prevhash, '-->', document.location.hash);
 				exports._prevhash = document.location.hash;
 				onHashChange();
 			}
 		}, 100);
 	}
 	//if (document.location.hash === '' || document.location.hash != exports._prevhash)
-	//	onHashChange();
+	onHashChange();
 	return true;
 }
 
-_init();
+$(function(){
+  setTimeout(function(){ _init(); },1); // next tick
+});
