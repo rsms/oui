@@ -123,7 +123,8 @@ oui.inherits(exports.Session, oui.EventEmitter, {
     this.emit('auth_token', prevToken);
   },
 
-  setUser: function(user) {
+  setUser: function(user, userMeta) {
+    this.userMeta = userMeta;
     if (user === this.user) {
       // always emit userchange
       this.emit('userchange', user);
@@ -234,12 +235,12 @@ oui.inherits(exports.Session, oui.EventEmitter, {
         username: username,
         password: password
       };
-      this._requestSignIn(params, callback);
+      this._requestSignIn(params, {legacy:true}, callback);
       // todo: cache new passhash to be able to seamlessly switch backends.
     }
   },
 
-  _requestSignIn: function(params, callback) {
+  _requestSignIn: function(params, userMeta, callback) {
     var self = this;
     console.log('[oui] (session/sign-in) <-- ', params);
     this.post('session/sign-in', params, function(err, result) {
@@ -250,7 +251,7 @@ oui.inherits(exports.Session, oui.EventEmitter, {
           self.setAuthToken(result.auth_token);
         if (result.sid)
           self.setId(result.sid);
-        self.setSignedInUser(result.user);
+        self.setSignedInUser(result.user, userMeta);
       }
     });
   },
@@ -283,15 +284,15 @@ oui.inherits(exports.Session, oui.EventEmitter, {
       username: result.username,
       auth_response: auth_response
     };
-    this._requestSignIn(params, callback);
+    this._requestSignIn(params, null, callback);
   },
 
-  setSignedInUser: function(user) {
+  setSignedInUser: function(user, userMeta) {
     if (typeof user !== 'object')
       throw new Error('Invalid argument: user is not an object');
     if (!user.username)
       throw new Error('Data inconsistency: Missing username in user argument');
-    this.setUser(user);
+    this.setUser(user, userMeta);
     console.log('[oui] session/signIn: successfully signed in '+user.username);
   }
 
