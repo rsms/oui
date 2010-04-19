@@ -56,9 +56,14 @@ exports.session = {
     if (!req.session)
       this.sessions.create(req);
     var responseObj = {sid: req.session.id};
-    if (req.session.data.user)
-      responseObj.user = req.session.data.user;
-    return responseObj;
+    if (!req.session.data.user)
+      return responseObj;
+    this.userPrototype.find(req.session.data.user.username, function(err, user){
+      if (err) return res.sendError(err);
+      if (user)
+        responseObj.user = user.authedRepresentation;
+      res.sendObject(responseObj);
+    });
   },
 
   // Sanity checks and preparation before a GET or POST to signIn

@@ -225,7 +225,7 @@ function(req, sid, auth_token, auth_user, callback) {
       }
       
       // Assign the user to the session, marking the session as authenticated
-      session.data.user = user;
+      session.data.user = user.sessionRepresentation;
       
       if (server.debug) {
         sys.log('[oui] session/resurrectAuthedUser: resurrected user '+
@@ -254,6 +254,7 @@ function(req, sid, auth_token, auth_user, callback) {
       requestFinalizer = function(req) {
         if (req.session) {
           req.session.destroy();
+          req.session = undefined;
           if (sid)
             req.cookie(sessions.sidCookieName, {expires: Date.distantPast});
         }
