@@ -273,8 +273,8 @@ exports.setup = function() {
       } else {
         var hi = Math.floor((exports.backends.length-1)*0.5);
         exports.currentIndex = Math.round(Math.random()*hi);
-        console.debug(__name+' selected a random backend:',
-          exports.backends[exports.currentIndex]);
+        console.debug(__name+' selected a random backend: '+
+          exports.backends[exports.currentIndex].url());
       }
     }
   }
