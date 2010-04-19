@@ -226,29 +226,44 @@ exports.setup = function() {
     }
   }
 
-  // sanitize backends
-  for (i=0;(b=exports.backends[i]);++i) {
-    b.port = b.port ? parseInt(b.port) : 80;
-    if (!b.host) {
-      throw new Error('inconsistency error in '+__name+
-      ' -- backend without host specification');
-    }
-    if (b.path) b.path = '/'+b.path.replace(/^\/+|\/+$/g, '');
-    if (!b.url) b.url = jQuery.proxy(backend_url, b);
-  }
-
   if (!isLocal) {
     // If the client does not support CORS, make sure we only keep same origin
     if (!oui.capabilities.cors) {
       var v = [];
       for (i=0; (b=exports.backends[i]); ++i) {
-        if (b.host === window.location.hostname && b.port === window.location.port) {
+        if ( b.host === window.location.hostname
+         && (b.port === window.location.port || (b.port === 80 && !window.location.port)) )
+        {
           v.push(b);
           break;
         }
       }
       exports.backends = v;
     }
+  }
+
+  // sanity check
+  if (exports.backends.length === 0) {
+    if (sameOriginBackend) {
+      console.warn(__name+' no available backends found -- forcingly adding same-origin');
+      exports.backends = [sameOriginBackend];
+    } else {
+      console.error(__name+' no available backends found');
+      return;
+    }
+  }
+
+  // sanitize backends
+  for (i=0;(b=exports.backends[i]);++i) {
+    b.port = b.port ? parseInt(b.port) : 80;
+    if (!b.host) {
+      throw new Error(__name+': inconsistency error: backend without host specification');
+    }
+    if (b.path) b.path = '/'+b.path.replace(/^\/+|\/+$/g, '');
+    if (!b.url) b.url = jQuery.proxy(backend_url, b);
+  }
+
+  if (!isLocal) {
     // Restore current backend from browser session (between page reloads).
     // This cookie is transient, lives in browser session)
     // Value in the format "host:port"
@@ -267,9 +282,7 @@ exports.setup = function() {
     // In the case there was no previous backend, choose one by random from the
     // top 50%
     if (!restored) {
-      if (exports.backends.length === 0) {
-        console.warn(__name+' no available backends found');
-      } else if (exports.backends.length === 1) {
+      if (exports.backends.length === 1) {
         exports.currentIndex = 0;
       } else {
         var hi = Math.floor((exports.backends.length-1)*0.5);
