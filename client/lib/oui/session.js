@@ -2,14 +2,31 @@
  * Represents a client-server session.
  *
  * Events:
+ *
  *  - open () -- when the session is open.
+ *
  *  - userchange (previousUser) -- when authenticated user has changed.
+ *
+ *  - userinfo (previousUser, added, updated) -- when an authed users info
+ *      changed (also emitted directly after a userchange cause by a successful
+ *      sign-in event). If previousUser is not a false value, `added` and
+ *      `updated` are objects describing what was updated or added.
+ *      See Object.merge3 for details.
+ *
  *  - id (prevID) -- when session id changed.
+ *
  *  - auth_token (prevAuthToken) -- when auth_token changed.
+ *
  *  - exec-send (remoteName) -- when a remote call started.
+ *
  *  - exec-recv (remoteName) -- when a remote call completed.
- *  - busy () -- when transitioning from "idle" to "busy" mode (ie remote calls in flight).
- *  - idle () -- when transitioning from "busy" ro "idle" mode (ie no remote calls in flight).
+ *
+ *  - busy () -- when transitioning from "idle" to "busy" mode
+ *      (ie there _are_ remote calls in flight).
+ *
+ *  - idle () -- when transitioning from "busy" ro "idle" mode
+ *      (ie _no_ remote calls in flight).
+ *
  *
  * Session([[app, ]id])
  */
@@ -120,6 +137,26 @@ oui.inherits(exports.Session, oui.EventEmitter, {
       oui.cookie.clear('auth_user');
     }
     this.emit('userchange', prevUser);
+    this._emitUserInfoEvent(prevUser);
+  },
+  
+  _emitUserInfoEvent: function(prevUser) {
+    if (this.user) {
+      if (prevUser) {
+        if (prevUser._rev && prevUser._rev === this.user._rev) {
+          // nothing changed since the document revision is unchanged
+          return;
+        }
+        var m = Object.merge3(prevUser, prevUser, this.user);
+        if (m.added || m.updated) {
+          // ^ no need to test for conflicts, as there can be none
+          console.log(__name+': user info changed:', m);
+          this.emit('userinfo', prevUser, m.added, m.updated);
+        }
+      } else {
+        this.emit('userinfo');
+      }
+    }
   },
 
   // Open the session
