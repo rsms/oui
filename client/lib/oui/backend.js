@@ -259,8 +259,7 @@ exports.setup = function() {
         if (b.host === t[0] && b.port === t[1]) {
           exports.currentIndex = i;
           restored = true;
-          console.debug(__name+' restored previously used backend from cookie:',
-            exports.backends[exports.currentIndex]);
+          console.debug(__name+' restored previously used backend from cookie: '+b.url());
           break;
         }
       }
@@ -273,11 +272,17 @@ exports.setup = function() {
       } else {
         var hi = Math.floor((exports.backends.length-1)*0.5);
         exports.currentIndex = Math.round(Math.random()*hi);
-        console.debug(__name+' selected a random backend: '+
-          exports.backends[exports.currentIndex].url());
+        if (oui.debug) {
+          b = exports.backends[exports.currentIndex];
+          console.debug(__name+' selected a random backend: '+
+            (b ? b.url() : '<null>'));
+        }
       }
     }
   }
 
-  console.debug('backends =>', exports.backends);
+  if (oui.debug) {
+    console.debug('backends => ['+exports.backends.map(function(b){
+      return b ? b.url() : '<null>'; }).join(', ')+']');
+  }
 };
