@@ -50,6 +50,9 @@ mixin(http.ServerResponse.prototype, {
     this.setHeader('Content-Length', len);
   },
 
+  get statusCode() { return this.status; },
+  set statusCode(status) { this.status = status; },
+
   prepare: function() {
     var server = this.request.connection.server
     this.headers = [
@@ -219,13 +222,16 @@ mixin(http.ServerResponse.prototype, {
   },
 
   // Send a standard response with optional HTTP status code.
-  send: function(statusCode) {
-    if (!statusCode) statusCode = this.statusCode || 200;
-    else this.statusCode = statusCode;
+  send: function(statusCode, obj) {
+    if (!statusCode)
+      statusCode = this.status || 200;
+    else
+      this.status = statusCode;
     if (http.BODYLESS_STATUS_CODES.indexOf(statusCode)) {
       this.request.sendResponse();
     } else {
-      var obj = {status: http.STATUS_CODES[statusCode] || statusCode};
+      if (!obj)
+        obj = {status: http.STATUS_CODES[statusCode] || statusCode};
       this.sendObject(obj);
     }
   },
