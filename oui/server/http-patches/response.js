@@ -220,7 +220,8 @@ mixin(http.ServerResponse.prototype, {
 
   // Send a standard response with optional HTTP status code.
   send: function(statusCode) {
-    if (!statusCode) statusCode = 200;
+    if (!statusCode) statusCode = this.statusCode || 200;
+    else this.statusCode = statusCode;
     if (http.BODYLESS_STATUS_CODES.indexOf(statusCode)) {
       this.request.sendResponse();
     } else {
@@ -356,9 +357,14 @@ mixin(http.ServerResponse.prototype, {
           fs.read(fd, rz, pos, enc, function(err, chunk, bytes_read) {
             if (err) return errorClosure(err);
             if (chunk) {
-              res.write(chunk, enc);
-              pos += bytes_read;
-              readChunk();
+              try {
+                res.write(chunk, enc);
+                pos += bytes_read;
+                readChunk();
+              } catch (e) {
+                fs.close(fd);
+                errorClosure(e);
+              }
             }
             else { // EOF
               res.end();
