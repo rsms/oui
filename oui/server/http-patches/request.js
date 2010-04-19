@@ -262,7 +262,7 @@ mixin(http.IncomingMessage.prototype, {
       if (!(res.status === 200 && this.method === 'HEAD'))
         res.write(body, res.encoding)
     } else {
-      if (!bodyless) res.contentLength = 0;
+      res.contentLength = 0;
       res.writeHead();
     }
     res.end();
