@@ -242,7 +242,7 @@ exports.setup = function() {
     if (!oui.capabilities.cors) {
       var v = [];
       for (i=0; (b=exports.backends[i]); ++i) {
-        if (b.host === window.location.host && b.port === window.location.port) {
+        if (b.host === window.location.hostname && b.port === window.location.port) {
           v.push(b);
           break;
         }
@@ -267,7 +267,9 @@ exports.setup = function() {
     // In the case there was no previous backend, choose one by random from the
     // top 50%
     if (!restored) {
-      if (exports.backends.length === 1) {
+      if (exports.backends.length === 0) {
+        console.warn(__name+' no available backends found');
+      } else if (exports.backends.length === 1) {
         exports.currentIndex = 0;
       } else {
         var hi = Math.floor((exports.backends.length-1)*0.5);
