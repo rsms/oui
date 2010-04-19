@@ -3,9 +3,9 @@ exports.events = new oui.EventEmitter();
 
 /*
 Events emitted by exports.events:
-  change (ev, String currentPath, Array routes)
+  change (ev, String currentPath, String previousPath, Array routes)
     Called when hash changes, before calling routes
-  changed (ev, String currentPath, Array routes)
+  changed (ev, String currentPath, String previousPath, Array routes)
     Called when hash changed, after calling routes
 */
 
@@ -85,7 +85,7 @@ function onHashChange() {
   exports.path = document.location.hash.substr(1);
   if (prevPath === exports.path) return;
   routes = exports.solve(exports.path, params);
-  exports.events.emit('change', exports.path, routes);
+  exports.events.emit('change', exports.path, prevPath, routes);
   for (var i=0; (route = routes[i]); ++i) {
     try {
       route.handler(params, exports.path, prevPath);
@@ -93,7 +93,7 @@ function onHashChange() {
 			console.error('['+__name+'] error when calling handler', route.handler, e.stack || e);
 		}
 	}
-	exports.events.emit('changed', exports.path, routes);
+	exports.events.emit('changed', exports.path, prevPath, routes);
 }
 
 function isRegExp(obj) {
