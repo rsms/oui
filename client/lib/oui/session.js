@@ -242,9 +242,9 @@ oui.inherits(exports.Session, oui.EventEmitter, {
 
   _requestSignIn: function(params, userMeta, callback) {
     var self = this;
-    console.log('[oui] (session/sign-in) <-- ', params);
+    console.log('[oui] (session/sign-in) <-- ', params, userMeta);
     this.post('session/sign-in', params, function(err, result) {
-      console.log('[oui] (session/sign-in) --> ', err, result);
+      console.log('[oui] (session/sign-in) --> ', err, result, userMeta);
       if (callback) callback(err, result);
       if (!err && result.user) {
         if (result.auth_token)
