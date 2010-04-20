@@ -196,15 +196,14 @@ function _init() {
 				onHashChange();
 			}
 		});
-	} else {
-	  exports._prevhash = '';
+	} //else {
 		setInterval(function(){
 			if (exports._prevhash !== document.location.hash){
 				exports._prevhash = document.location.hash;
 				onHashChange();
 			}
-		}, 100);
-	}
+		}, 500);
+	//}
 	//if (document.location.hash === '' || document.location.hash != exports._prevhash)
 	onHashChange();
 	return true;
