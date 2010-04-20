@@ -196,15 +196,15 @@ function _init() {
 				onHashChange();
 			}
 		});
-	} //else {
-		setInterval(function(){
-			if (exports._prevhash !== document.location.hash){
-				exports._prevhash = document.location.hash;
-				onHashChange();
-			}
-		}, 500);
-	//}
-	//if (document.location.hash === '' || document.location.hash != exports._prevhash)
+	}
+	// even though onhashchange exists in modern browsers, it's a bit buggy in some,
+	// so always poll (however at a lower rate in that case) the state.
+	setInterval(function(){
+		if (exports._prevhash !== document.location.hash){
+			exports._prevhash = document.location.hash;
+			onHashChange();
+		}
+	}, ("onhashchange" in window) ? 500 : 100);
 	onHashChange();
 	return true;
 }
