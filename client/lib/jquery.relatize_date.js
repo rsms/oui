@@ -24,13 +24,20 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 (function($) {
   $.fn.relatizeDate = function() {
     return $(this).each(function() {
-      if ($(this).hasClass( 'relatized' )) return;
-      $(this).text( $.relatizeDate(this) ).addClass( 'relatized' );
+      var $q = $(this);
+      if ($q.hasClass('date-relatized')) return;
+      $q.text($.relatizeDate($q)).addClass('date-relatized');
     });
   };
 
   $.relatizeDate = function(element) {
-    return $.relatizeDate.timeAgoInWords( new Date($(element).text()) );
+    var n, value = $(element).text(), date;
+    if (!isNaN((n = Number(value)))) {
+      date = Date.fromUTCTimestamp(n);
+    } else {
+      date = new Date(value);
+    }
+    return $.relatizeDate.timeAgoInWords(date);
   };
 
   // shortcut
