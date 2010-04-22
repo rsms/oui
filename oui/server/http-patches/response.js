@@ -190,13 +190,23 @@ mixin(http.ServerResponse.prototype, {
    */
   mkError: function(status, title, message, exception) {
     if (typeof status === 'object' && status.stack !== undefined) {
-      exception = status
-      this.status = 500
-    }
-    else {
+      exception = status;
+      this.status = exception.statusCode ? parseInt(exception.statusCode) : 500;
+    } else {
       this.status = parseInt(status) || 500
     }
-    e = {title: String(title || http.STATUS_CODES[status] || 'Error')}
+    e = {};
+
+    if (title) {
+      e.title = String(title);
+    } else if (exception && exception.title) {
+      e.title = String(exception.title);
+    } else if (exception && exception.type) {
+      e.title = String(exception.type);
+    } else {
+      e.title = http.STATUS_CODES[status] || 'Error';
+    }
+
     if (exception) {
       e.message = message ? String(message)+' ' : ''
       if (exception.message)
@@ -205,11 +215,11 @@ mixin(http.ServerResponse.prototype, {
         delete e.message // no message
       if (exception.stack)
         e.stack = exception.stack.split(/[\r\n]+ +/m)
+    } else if (message) {
+      e.message = String(message);
     }
-    else if (message) {
-      e.message = String(message)
-    }
-    return {error: e}
+
+    return {error: e};
   },
 
   tryGuard: function(fun, msg) {
