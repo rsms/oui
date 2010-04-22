@@ -168,3 +168,79 @@ CallQueue.prototype.performNext = function() {
     this.autostart = false;
   }
 }
+
+// -----------------------------------------------------------------------------
+// Input sanitation
+
+exports.urlRegExp = /\b(([\w-]+:\/\/?|www[.])[^\s()<>]+(?:\([\w\d]+\)|([^[:punct:]\s]|\/)))/;
+exports.emailRegExp = /^[^@]+@[^@]+\.[^@]+$/;
+
+exports.sanitizeInput = function (params, dst, accepts) {
+  var k, e, type, def, value, ok, dstbuf = {};
+  for (k in accepts) { def = accepts[k];
+    // not set?
+    if (!(k in params) || (value = params[k]) === undefined) {
+      // required and missing?
+      if (def.required) {
+        return ((e = new Error('missing parameter "'+k+'"'))
+            && (e.statusCode = 400) && e);
+      }
+      // it's optional, so lets simply skip it
+      continue;
+    }
+    // retrieve value
+    value = params[k];
+    type = typeof value;
+    // check type
+    if (def.type) {
+      if (def.type === 'array') {
+        ok = Array.isArray(value);
+      } else if (def.type === 'url') {
+        ok = String(value).match(exports.urlRegExp);
+      } else if (def.type === 'email') {
+        ok = String(value).match(exports.emailRegExp);
+      } else if (def.type.substr(0,3) === 'int') {
+        if ((ok = (type === 'number')))
+          value = Math.round(value);
+      } else if ((ok = (def.type === type)) && (def.type === 'number')) {
+        ok = !isNaN(value);
+      }
+      if (!ok) {
+        return ((e = new Error('bad type of parameter "'+k+'" -- expected '+def.type))
+            && (e.statusCode = 400) && e);
+      }
+    }
+    // trim strings
+    if (type === 'string') {
+      value = value.trim();
+    }
+    // empty string?
+    if (def.empty !== undefined && !def.empty && type !== 'number') {
+      ok = true;
+      if (type === 'string') {
+        ok = (value.length !== 0);
+      } else if (type === 'object') {
+        ok = (Array.isArray(value) ? value.length : Object.keys(value).length) !== 0;
+      }
+      if (!ok) {
+        return ((e = new Error('empty parameter "'+k+'"'))
+            && (e.statusCode = 400) && e);
+      }
+    }
+    // check regexp match
+    if (def.match && !String(value).match(def.match)) {
+      return ((e = new Error('bad format of argument "'+k+'" -- expected '+def.match))
+          && (e.statusCode = 400) && e);
+    }
+    // post-filter
+    if (typeof def.filter === 'function') {
+      value = def.filter(value);
+    }
+    // accepted
+    dstbuf[k] = value;
+  }
+  // all ok -- apply dstbuf to dst
+  for (k in dstbuf) dst[k] = dstbuf[k];
+  // return a false value to indicate there was no error
+  return null;
+}

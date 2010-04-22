@@ -1,3 +1,30 @@
+// NOTE: this file is used by both the server and client library, thus it need
+//       to work in web browsers.
+
+// Define a frozen constant on <obj>.
+// - obj.name += 3 will fail
+// - obj.name = other will fail
+// - delete obj.name will fail
+// However, only simple types (strings, numbers, language constants) will be
+// truly immutable. Complex types (arrays, objects) will still be mutable.
+if (typeof Object.defineConstant !== 'function') {
+  if (typeof Object.defineProperty === 'function') {
+    Object.defineConstant = function (obj, name, value, enumerable, deep) {
+      Object.defineProperty(obj, name, {
+        value: value,
+        writable: false,
+        enumerable: enumerable !== undefined ? (!!enumerable) : true,
+        configurable: false
+      });
+    };
+  } else {
+    // better than nothing I guess...
+    Object.defineConstant = function (obj, name, value, enumerable, deep) {
+      obj[name] = value;
+    };
+  }
+}
+
 if (typeof Object.keys !== 'function') {
   Object.keys = function(obj){
     var keys = [];
@@ -184,8 +211,18 @@ if (typeof Object.merge3 !== 'function') {
       }
     
       if (k in o) {
-        if (!Object.deepEquals(v, ov))
-          updatedInA[k] = v;
+        if (!Object.deepEquals(v, ov)) {
+          if (typeof v === 'object' && !Array.isArray(v)) {
+            if (Object.keys(v).length === 0) {
+              if (Object.keys(r[k]).length === 0)
+                updatedInA[k] = v;
+            } else {
+              updatedInA[k] = v;
+            }
+          } else {
+            updatedInA[k] = v;
+          }
+        }
       } else {
         newInA[k] = v;
       }
