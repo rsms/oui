@@ -353,7 +353,7 @@ mixin(Source.prototype, {
         readOrigFileCb;
     rcb.open();
     readOrigFileCb = rcb.handle();
-    fs.readFile(this.filename, function(err, content) {
+    fs.readFile(this.filename, 'utf-8', function(err, content) {
       if (err) {
         readOrigFileCb(err);
         return;
