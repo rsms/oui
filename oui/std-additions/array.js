@@ -5,6 +5,39 @@ if (typeof Array.isArray !== 'function') {
   Array.isArray = function(obj) { return toString.call(obj) === "[object Array]"; };
 }
 
+if (!Array.prototype.forEach) {
+  Array.prototype.forEach =  function(block, ctx) {
+    var len = this.length >>> 0;
+    for (var i = 0; i < len; ++i) {
+      if (i in this) {
+        block.call(ctx, this[i], i, this);
+      }
+    }
+  };
+}
+if (!Array.prototype.map) {
+  Array.prototype.map = function(fun, ctx) {
+    var len = this.length >>> 0, res = new Array(len);
+    for (var i = 0; i < len; ++i) {
+      if (i in this) {
+        res[i] = fun.call(ctx, this[i], i, this);
+      }
+    }
+    return res;
+  };
+}
+if (!Array.prototype.filter) {
+  Array.prototype.filter = function (block, ctx) {
+    var values = [];
+    for (var i = 0; i < this.length; i++) {
+      if (block.call(ctx, this[i])) {
+        values.push(this[i]);
+      }
+    }
+    return values;
+  };
+}
+
 /**
  * Return the first true return value from fun which is called for each value.
  * fun is called on this and receives a single argument (current value).
