@@ -368,6 +368,9 @@ exports.processCommandLineOptions = function(options, args, onusage) {
 exports.start = function(options) {
   var opt = {
     port: 80,
+    commandLineParsing: true,
+    standardHandlers: true,
+    sessionHandlers: true,
     // addr, sock ..
     // any other property is assigned to the server object
   };
@@ -375,7 +378,7 @@ exports.start = function(options) {
     mixin(opt, options);
   }
   // Unless command line parsing is disabled, parse options
-  if (!opt.noCommandLineParsing) {
+  if (opt.commandLineParsing) {
     oui.server.processCommandLineOptions(opt, null,
       opt.onCommandLineParseError // optional callback(message, options)
     );
@@ -387,10 +390,10 @@ exports.start = function(options) {
   const skipopts = [
     'port', 'addr',
     'sock',
-    'noCommandLineParsing',
+    'commandLineParsing',
     'onCommandLineParseError',
-    'noStandardHandlers',
-    'noSessionHandlers',
+    'standardHandlers',
+    'sessionHandlers',
   ];
   Object.keys(opt).forEach(function(k){
     if (skipopts.indexOf(k) === -1) server[k] = opt[k];
@@ -398,8 +401,8 @@ exports.start = function(options) {
   // trim trailing slashes from pathPrefix
   server.pathPrefix = server.pathPrefix.replace(/\/+$/, '');
   // Unless noStandardHandlers...
-  if (!opt.noStandardHandlers) {
-    if (!opt.noSessionHandlers) {
+  if (opt.standardHandlers) {
+    if (opt.sessionHandlers) {
       server.enableSessionHandlers(sessionPrefix);
     }
     server.enableBasicHandlers();
