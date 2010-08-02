@@ -26,13 +26,13 @@ server.GET('/messages', {onlyKeys:'boolean'}, function(params, req, res){
   if (params.onlyKeys) {
     return Object.keys(messages.map);
   } else {
-	  return messages.map;
+    return messages.map;
   }
 });
 
 // add a message
 server.POST('/messages', {message:{required:true}}, function(params, req, res) {
-	return {id: messages.add(params.message)};
+  return {id: messages.add(params.message)};
 });
 
 // get a specific message
@@ -43,7 +43,7 @@ server.GET('/messages/:id', {id:'int'}, function(params, req, res) {
   if (!message)
     return res.send(404, 'wtf');
   // send the message and it's id to the client
-	return {id: params.id, message: message};
+  return {id: params.id, message: message};
 });
 
 // update a specific message (also allow POST so old web browser can use this)
@@ -54,7 +54,7 @@ server.handle(['PUT', 'POST'], '/messages/:id', {
   var message = messages.map[params.id];
   messages.map[params.id] = params.message;
   // send the previous message to the client
-	return {message: message};
+  return {message: message};
 });
 
 // remove a specific message
@@ -64,7 +64,7 @@ function removeHandler(params, req, res) {
     return res.send(404);
   messages.map[params.id] = undefined;
   // send the old message to the client
-	return {message: message};
+  return {message: message};
 }
 var argspec = {id:{type:'int'}};
 // DELETE is the "correct" way...
