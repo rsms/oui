@@ -369,7 +369,7 @@ exports.start = function(options) {
   var opt = {
     port: 80,
     commandLineParsing: true,
-    standardHandlers: true,
+    basicHandlers: true,
     sessionHandlers: true,
     // addr, sock ..
     // any other property is assigned to the server object
@@ -392,7 +392,7 @@ exports.start = function(options) {
     'sock',
     'commandLineParsing',
     'onCommandLineParseError',
-    'standardHandlers',
+    'basicHandlers',
     'sessionHandlers',
   ];
   Object.keys(opt).forEach(function(k){
@@ -400,13 +400,11 @@ exports.start = function(options) {
   });
   // trim trailing slashes from pathPrefix
   server.pathPrefix = server.pathPrefix.replace(/\/+$/, '');
-  // Unless noStandardHandlers...
-  if (opt.standardHandlers) {
-    if (opt.sessionHandlers) {
-      server.enableSessionHandlers(sessionPrefix);
-    }
+  // Enable standard handlers
+  if (opt.sessionHandlers)
+    server.enableSessionHandlers(sessionPrefix);
+  if (opt.basicHandlers)
     server.enableBasicHandlers();
-  }
   // listen
   if (opt.sock) {
     // bind to UNIX socket
