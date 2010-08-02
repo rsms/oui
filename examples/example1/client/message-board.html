@@ -1,28 +1,11 @@
 <script type="text/javascript" charset="utf-8">
 
   oui.app.on('start', function(ev){
-    exports.pipe = oui.pipe.get('message-board', function(err){
-      if (err) throw err;
-      __html.find('form').removeClass('closed');
-    });
-    exports.pipe.on('message', function(ev, msg){
-      if (msg.title && msg.message)
-      __html.find('ul.messages').prepend(
-        '<li>'+
-          '<b>'+oui.htmlesc(msg.title)+':</b> '+
-          oui.htmlesc(msg.message)+
-        '</li>'
-      );
-    })
-    .on('error', function(ev, err){
-      console.error(__name+'.pipe error: '+(err ? err.stack || err : ''));
-    })
-    .on('close', function(ev, err){
-      __html.find('form').addClass('closed');
-    });
+    console.log('start')
   });
 
   $(function(){
+    console.log('dom')
     var form = __html.find('form');
     form.submit(function(ev){
       var msg = {};
