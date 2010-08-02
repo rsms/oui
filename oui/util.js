@@ -221,11 +221,20 @@ exports.sanitizeInput = function (params, dst, accepts) {
         value = Number(value);
         type = 'number';
         ok = !isNaN(value);
+      } else if (def.type.substr(0,4) === 'bool') {
+        if (type === 'string') {
+          value = (value === 'true' || value === '1' || value === 'on' || value === 'yes');
+        } else {
+          value = !!value;
+        }
+        type = 'boolean';
+        ok = true; // can't fail
       } else {
-        ok = false;
+        ok = (def.type === type);
       }
       if (!ok) {
-        return mk400err('Bad type of parameter "'+k+'". Expected '+def.type);
+        return mk400err('Bad type of parameter "'+k+'". Expected '+def.type+
+                        ' but got '+type);
       }
     }
     // trim strings
