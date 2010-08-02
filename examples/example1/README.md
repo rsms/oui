@@ -14,33 +14,22 @@ A good way to explore and play with Oui server APIs is to use [cURL](http://curl
 
 All server code in this example lives in `server.js`.
     
+- `GET /messages -> {id:message, ..}`
+  -- Retrieve all messages. Returns a map `id => message`.
+- `POST message -> /messages -> {id:int}`
+  -- Add a new message. Returns the new message id.
+- `GET /messages/:id -> {id:int, message:object}`
+  -- Retrieve a specific message with id `:id`. Returns a message.
+- `PUT|POST message -> /messages/:id -> {message:object}`
+  -- Assign a message to the id `:id`. Returns any message previously
+  assigned to `:id`.
+- `DELETE /messages/:id -> {message:object}`
+  -- Remove a message with id `:id`. Returns the message which was deleted.
+- `POST /messages/:id/delete -> {message:object}`
+  -- Like `DELETE /messages/:id -> message` but implemented as POST to support
+  old browsers (which are unable to send DELETE requests).
 
-### GET /messages -> {id:message, ..}
-
-Retrieve all messages. Returns a map `id => message`.
-
-### POST message -> /messages -> {id:int}
-
-Add a new message. Returns the new message id.
-
-### GET /messages/:id -> {id:int, message:object}
-
-Retrieve a specific message with id `:id`. Returns a message.
-
-### PUT|POST message -> /messages/:id -> {message:object}
-
-Assign a message to the id `:id`. Returns any message previously assigned to `:id`.
-
-### DELETE /messages/:id -> {message:object}
-
-Remove a message with id `:id`. Returns the message which was deleted.
-
-### POST /messages/:id/delete -> {message:object}
-
-Like `DELETE /messages/:id -> message` but implemented as POST to support old browsers (which are unable to send DELETE requests).
-
-
-## Sample cURL session
+### Sample cURL session
 
     $ curl localhost:8080/messages
     {}
