@@ -1,6 +1,6 @@
 # Example 1
 
-This is a simple introductory example which uses no authentication nor sessions, but do expose a server API as well as a client. It's a service which stores messages which can be any JSON object.
+This is a simple introductory example which uses no authentication nor sessions, but do expose a server API as well as a client. It's a service that stores messages which can be any JSON object.
 
 You start the server like this:
 
