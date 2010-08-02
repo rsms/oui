@@ -63,19 +63,17 @@ mixin(http.IncomingMessage.prototype, {
     // session
     this.parseSession(function(err){
       if (err) return callback(err); // forward
-
       // content
       if (self.method === 'POST' || self.method === 'PUT') {
         try {
-          self.parseRequestEntity();
+          self.startParsingRequestEntity();
         } catch (err) {
           return callback(err);
         }
       }
-
-      // done
-      callback();
     });
+    //done
+    callback();
   },
 
   parseSession: function (callback) {
@@ -121,43 +119,57 @@ mixin(http.IncomingMessage.prototype, {
     callback();
   },
 
-  parseRequestEntity: function() {
+  startParsingRequestEntity: function(callback) {
     // todo: handle other kind of content, like file uploads and arbitrary data.
     var server = this.connection.server, res = this.response;
-    if (this.contentLength < 1)
-      return res.sendError(411, 'Length Required');
+    if (this.contentLength < 1) {
+      var e = new Error();
+      e.title = 'Length Required';
+      e.statusCode = 411;
+      res.sendError(e);
+    }
     // state: if a request's content was buffered, .content is set.
     if (server.bufferableRequestTypes.indexOf(this.contentType) !== -1) {
       var send413 = function(){
-        res.sendError(413, "Request Entity Too Large", "Maximum size is "+
-          server.maxRequestBodySize.toString())
+        var e = new Error("Maximum size is "+server.maxRequestBodySize);
+        e.title = "Request Entity Too Large";
+        e.statusCode = 413;
+        res.sendError(e);
       };
       this.content = '';
       if (this.contentLength > 0) {
+        var fillcb;
         // limited buffer
         if (typeof server.maxRequestBodySize === 'number') {
           if (this.contentLength > server.maxRequestBodySize) {
             return send413();
-          } else {
-            var fillcb;
-            fillcb = function(chunk) {
-              var z = this.content.length+chunk.length;
-              if (z > server.maxRequestBodySize) {
-                this.content += chunk.substr(0, server.maxRequestBodySize - z);
-                this.removeListener('data', fillcb);
-                // clipped the input, which is a good thing
-                if (!this.started)
-                  send413();
-              } else {
-                this.content += chunk;
-              }
-            }
-            this.addListener('data', fillcb);
           }
+          fillcb = function(chunk) {
+            var z = this.content.length+chunk.length;
+            if (z > server.maxRequestBodySize) {
+              // abort
+              this.content += chunk.substr(0, server.maxRequestBodySize - z);
+              this.removeListener('data', fillcb);
+              // clipped the input, which is a good thing
+              return send413();
+            }
+            this.content += chunk;
+            if (z === this.contentLength) {
+              this.removeListener('data', fillcb);
+              // done
+            }
+          };
         } else {
           // unlimited buffer -- might be dangerous
-          this.addListener('data', function(chunk) {this.content += chunk })
+          fillcb = function(chunk) {
+            this.content += chunk;
+            if (this.content.length === this.contentLength) {
+              this.removeListener('data', fillcb);
+              // done
+            }
+          };
         }
+        this.on('data', fillcb);
       }
     }
   },
@@ -173,12 +185,16 @@ mixin(http.IncomingMessage.prototype, {
     try {
       obj = JSON.parse(data);
     } catch (exc) {
-      return this.response.sendError(400, 'Bad JSON', exc.message+' -- received '+data);
+      return this.response.sendError(400, 'Bad JSON',
+                                     exc.message+' -- received '+data);
     }
-    if (typeof obj !== 'object')
-      return this.response.sendError(400, 'Bad JSON', 'Root object must be a list or a dict');
-    for (var k in obj)
+    if (typeof obj !== 'object') {
+      return this.response.sendError(400, 'Bad JSON',
+                                     'Root object must be an array or a map');
+    }
+    for (var k in obj) {
       this.params[k] = obj[k];
+    }
   },
 
   solveRoute: function() {

@@ -91,10 +91,10 @@ function compile_remote(opt, handler) {
   //promise.emitError(err);
   request.finish(function (response) {
     var rsp_body = '';
-    response.addListener('body', function (chunk) {
+    response.on('body', function (chunk) {
       rsp_body += chunk;
     });
-    response.addListener('complete', function() {
+    response.on('complete', function() {
       //sys.debug('status => '+response.statusCode);
       var rsp = JSON.parse(rsp_body);
       if (rsp.serverErrors && rsp.serverErrors.length) {

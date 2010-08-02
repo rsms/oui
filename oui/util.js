@@ -175,24 +175,38 @@ CallQueue.prototype.performNext = function() {
 exports.urlRegExp = /\b(([\w-]+:\/\/?|www[.])[^\s()<>]+(?:\([\w\d]+\)|([^[:punct:]\s]|\/)))/;
 exports.emailRegExp = /^[^@]+@[^@]+\.[^@]+$/;
 
+function mk400err(msg) {
+  var e = new Error(msg);
+  e.statusCode = 400;
+  return e;
+}
+
 exports.sanitizeInput = function (params, dst, accepts) {
-  var k, e, type, def, value, ok, dstbuf = {};
-  for (k in accepts) { def = accepts[k];
+  var i, k, e, type, def, value, ok, dstbuf = {},
+      acceptKeys = Object.keys(accepts);
+  for (i=0; k = acceptKeys[i]; i++) {
+    def = accepts[k];
+    if (typeof def !== 'object') {
+      // okay, treat it as 'type'
+      def = {type:def};
+    }
     // not set?
     if (!(k in params) || (value = params[k]) === undefined) {
-      // required and missing?
       if (def.required) {
-        return ((e = new Error('missing parameter "'+k+'"'))
-            && (e.statusCode = 400) && e);
+        // required and missing?
+        return mk400err('missing parameter "'+k+'"');
+      } else if ('def' in def) {
+        // default value?
+        dstbuf[k] = def.def;
       }
-      // it's optional, so lets simply skip it
+      // didn't barf on def.required so lets continue with next parameter
       continue;
     }
     // retrieve value
     value = params[k];
     type = typeof value;
     // check type
-    if (def.type) {
+    if (def.type && def.type !== '*') {
       if (def.type === 'array') {
         ok = Array.isArray(value);
       } else if (def.type === 'url') {
@@ -200,14 +214,18 @@ exports.sanitizeInput = function (params, dst, accepts) {
       } else if (def.type === 'email') {
         ok = String(value).match(exports.emailRegExp);
       } else if (def.type.substr(0,3) === 'int') {
-        if ((ok = (type === 'number')))
-          value = Math.round(value);
-      } else if ((ok = (def.type === type)) && (def.type === 'number')) {
+        value = parseInt(value);
+        type = 'number';
         ok = !isNaN(value);
+      } else if (def.type === 'float' || def.type === 'number') {
+        value = Number(value);
+        type = 'number';
+        ok = !isNaN(value);
+      } else {
+        ok = false;
       }
       if (!ok) {
-        return ((e = new Error('bad type of parameter "'+k+'" -- expected '+def.type))
-            && (e.statusCode = 400) && e);
+        return mk400err('Bad type of parameter "'+k+'". Expected '+def.type);
       }
     }
     // trim strings
@@ -223,14 +241,12 @@ exports.sanitizeInput = function (params, dst, accepts) {
         ok = (Array.isArray(value) ? value.length : Object.keys(value).length) !== 0;
       }
       if (!ok) {
-        return ((e = new Error('empty parameter "'+k+'"'))
-            && (e.statusCode = 400) && e);
+        return mk400err('empty parameter "'+k+'"');
       }
     }
     // check regexp match
     if (def.match && !String(value).match(def.match)) {
-      return ((e = new Error('bad format of argument "'+k+'" -- expected '+def.match))
-          && (e.statusCode = 400) && e);
+      return mk400err('bad format of argument "'+k+'" -- expected '+def.match);
     }
     // post-filter
     if (typeof def.filter === 'function') {
@@ -239,7 +255,7 @@ exports.sanitizeInput = function (params, dst, accepts) {
     // accepted
     dstbuf[k] = value;
   }
-  // all ok -- apply dstbuf to dst
+  // all ok -- apply dstbuf to dst (safe to use for..in here)
   for (k in dstbuf) dst[k] = dstbuf[k];
   // return a false value to indicate there was no error
   return null;

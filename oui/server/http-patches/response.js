@@ -362,10 +362,9 @@ mixin(http.ServerResponse.prototype, {
         res.end();
         return callback(null, 0);
       }
-      res.flush();
 
       // forward
-      var enc = 'binary', rz = 8*1024;
+      const enc = 'binary', rz = 8192;
       fs.open(abspath, process.O_RDONLY, 0666, function(err, fd) {
         if (err) return errorClosure(err);
         var pos = 0;

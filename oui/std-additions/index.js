@@ -40,10 +40,12 @@ require('./array');
 //------------------------------------------------------------------------------
 // String
 
-String.prototype.repeat = function(times) {
-  var v = [], i=0;
-  for (; i < times; v.push(this), i++);
-  return v.join('');
+if (!String.prototype.repeat) {
+  String.prototype.repeat = function(times) {
+    var v = new Array(times), i=0;
+    for (; i < times; v[i] = this, ++i) {}
+    return v.join('');
+  };
 }
 
 String.prototype.fillLeft = function(length, padstr) {
@@ -230,8 +232,8 @@ fs.find = function(options, callback){
 
   if (!opt.unbuffered && callback) {
     var files = [], dirs = [];
-    cl.addListener('file', function(relpath){ files.push(relpath); })
-      .addListener('directory', function(relpath){ dirs.push(relpath); })
+    cl.on('file', function(relpath){ files.push(relpath); })
+      .on('directory', function(relpath){ dirs.push(relpath); })
     cl.callback = function(err){ callback(err, files, dirs); };
   }
 

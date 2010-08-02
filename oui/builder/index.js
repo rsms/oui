@@ -778,7 +778,7 @@ mixin(Builder.prototype, {
       filter: this.srcFilter,
       unbuffered: true,
     }, callback);
-    eve.addListener('file', function(relpath, abspath, ctx){
+    eve.on('file', function(relpath, abspath, ctx){
       var source;
       /*if (!didAddStdlib && self.stdlib && self.stdlibJSPath) {
         source = new Source(self, self.stdlibJSPath, '');

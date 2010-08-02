@@ -127,7 +127,7 @@ function main(argv, options, callback) {
     }
     var builder = mkbuilder(options, argv);
     if (!options.once) {
-      builder.addListener('collect', watcher);
+      builder.on('collect', watcher);
       isBuilding = true;
       builder.all(function(err){
         isBuilding = false;

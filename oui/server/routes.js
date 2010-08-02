@@ -22,12 +22,33 @@ exports.Routes.prototype.solve = function(req) {
 }
 
 exports.Routes.prototype.toString = function() {
-  var m, v, s = [];
+  var i, m, v, s = [],
+      spacing = 2,
+      mlen = "OPTIONS".length+spacing;
+  // find widest columns
+  var colwidths = [];
   for (m in this.map) {
-    this.map[m].forEach(function(t){
-      s.push(m+'\t'+t[1]+'  (!'+t[0]+')');
+    this.map[m].forEach(function(t) {
+      var priority = t[0], route = t[1];
+      var col, cols = String(route).split(/\t/);
+      for (i=0; col=cols[i];i++) {
+        if (!(i in colwidths)) colwidths[i] = 0;
+        colwidths[i] = Math.max(colwidths[i], String(col).length);
+      }
     });
-    s.push('');
+  }
+  // create lines
+  for (m in this.map) {
+    this.map[m].forEach(function(t) {
+      var priority = t[0], route = t[1],
+          col, cols = String(route).split(/\t/),
+          b = m.fillRight(mlen);
+      for (i=0; i<colwidths.length; i++) {
+        b += String(cols[i] || '').fillRight(colwidths[i] + spacing);
+      }
+      b += '('+priority+')';
+      s.push(b);
+    });
   }
   return s.join('\n');
 }
@@ -36,9 +57,12 @@ METHODS.forEach(function(method){
   exports.Routes.prototype[method] = function(path, priority, handler){
     if (typeof priority === 'function') {
       handler = priority;
-      priority = 100;
+      priority = NaN;
     } else {
       priority = parseInt(priority);
+    }
+    if (isNaN(priority)) {
+      priority = 100;
     }
     var m = this.map[method];
     if (m === undefined) m = this.map[method] = [];
@@ -84,12 +108,13 @@ exports.Route = function(pat, handler) {
       //  '[oui] route '+sys.inspect(pat)+' treated as absolute fixed-string match');
     }
     else {
-      var nsrc = pat.replace(/:[^/]*/g, '([^/]*)');
+      this.originalPath = pat;
+      var nsrc = pat.replace(/:[^\/]+/g, '([^\\/]+)');
       nsrc = '^'+nsrc+'$';
-      //exports.debug && sys.log(
-      //  '[oui] route '+sys.inspect(pat)+' compiled to '+sys.inspect(nsrc))
       this.path = new RegExp(nsrc, 'i'); // case-insensitive by default
-      var param_keys = pat.match(/:[^/]*/g);
+      //var sys=require('sys');
+      //sys.log('[oui] route '+sys.inspect(pat)+' compiled to '+this.path);
+      var param_keys = pat.match(/:[^\/]+/g);
       if (param_keys) for (var i=0; i < param_keys.length; i++)
         this.keys.push(param_keys[i].replace(/^:/, ''));
     }
@@ -133,10 +158,8 @@ exports.Route.prototype.extractParams = function(req, matches) {
 }
 
 exports.Route.prototype.toString = function() {
-  var s = String(this.path);
+  var s = String(this.originalPath || this.path);
   if (this.keys && this.keys.length)
-    s += '  {'+this.keys+'}';
-  if (this.handler)
-    s += ' -> <function>';
+    s += '\t{'+this.keys+'}';
   return s;
 }
