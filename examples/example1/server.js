@@ -6,7 +6,7 @@ var fs = require('fs'),
 var server = oui.server.start({
   port: 8080,
   documentRoot: path.dirname(fs.realpathSync(__filename)) + '/public',
-  authSecret: 'you should change this in a real app',
+  noSessionHandlers: true, // we don't use sessions or auth in this example
 });
 
 // In this example we store our messages in memory. In a real world app you

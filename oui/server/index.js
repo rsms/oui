@@ -272,7 +272,7 @@ exports.createServer = function() {
   server.maxRequestBodySize = 1024*1024*2; // 2 MB
 
   // Standard handlers
-  server.enableStandardHandlers = function(sessionPrefix) {
+  server.__proto__.enableSessionHandlers = function(sessionPrefix) {
     if (!this.authSecret)
       throw new Error('server.authSecret is not set');
     if (!sessionPrefix) {
@@ -284,10 +284,16 @@ exports.createServer = function() {
     this.GET(sessionPrefix+'/sign-in', 99, handlers.session.GET_signIn);
     this.POST(sessionPrefix+'/sign-in', 99, handlers.session.POST_signIn);
     this.GET(sessionPrefix+'/sign-out', 99, handlers.session.signOut);
+  }
+  server.__proto__.enableBasicHandlers = function() {
     // Serve static files (priority 0/low)
     this.GET(/^.+/, 0, handlers.static);
     // Pass any OPTIONS request to allow CORS lookup (priority 0/low)
     this.OPTIONS(/^.*/ , 0, handlers.noop);
+  }
+  server.__proto__.enableStandardHandlers = function(sessionPrefix) {
+    this.enableSessionHandlers(sessionPrefix);
+    this.enableBasicHandlers();
   }
 
   return server;
@@ -384,6 +390,7 @@ exports.start = function(options) {
     'noCommandLineParsing',
     'onCommandLineParseError',
     'noStandardHandlers',
+    'noSessionHandlers',
   ];
   Object.keys(opt).forEach(function(k){
     if (skipopts.indexOf(k) === -1) server[k] = opt[k];
@@ -392,10 +399,10 @@ exports.start = function(options) {
   server.pathPrefix = server.pathPrefix.replace(/\/+$/, '');
   // Unless noStandardHandlers...
   if (!opt.noStandardHandlers) {
-    server.enableStandardHandlers();
-    server.enableStandardHandlers = function(){
-      throw new Error('Standard handlers already enabled');
-    };
+    if (!opt.noSessionHandlers) {
+      server.enableSessionHandlers(sessionPrefix);
+    }
+    server.enableBasicHandlers();
   }
   // listen
   if (opt.sock) {
