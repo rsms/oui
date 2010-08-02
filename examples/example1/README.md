@@ -1,10 +1,8 @@
 # Example 1
 
-This is a simple introductory example which uses no authentication nor sessions, but do expose a server API as well as a client.
+This is a simple introductory example which uses no authentication nor sessions, but do expose a server API as well as a client. It's a service which stores messages which can be any JSON object.
 
-Example 1 is a service which stores messages which can be any JSON object.
-
-Start the server like this:
+You start the server like this:
 
     node server.js --debug
 
