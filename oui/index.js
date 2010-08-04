@@ -1,4 +1,4 @@
-exports.version = '0.0.1';
+exports.version = '0.1.0';
 require('./std-additions');
 exports.server = require('./server');
 // node: do not include builder as it in turn imports less.js which will mess up Array.prototype.
