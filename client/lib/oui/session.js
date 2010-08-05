@@ -151,7 +151,7 @@ oui.inherits(exports.Session, oui.EventEmitter, {
         var m = Object.merge3(prevUser, prevUser, this.user);
         if (m.added || m.updated) {
           // ^ no need to test for conflicts, as there can be none
-          console.log(__name+': user info changed:', m);
+          console.log(module.id+': user info changed:', m);
           this.emit('userinfo', prevUser, m.added, m.updated);
         }
       } else {

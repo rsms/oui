@@ -237,7 +237,7 @@ oui.inherits(exports.Request, oui.EventEmitter, {
   },
   
   toString: function(){
-    return __name+'.Request<'+(this.id === undefined ? 'new' : this.id)+
+    return module.id+'.Request<'+(this.id === undefined ? 'new' : this.id)+
       ' '+this.method+' '+this.url+'>';
   }
 });

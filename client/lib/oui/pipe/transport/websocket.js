@@ -5,10 +5,10 @@ exports.isUseable = function(){
 };
 
 exports.Transport = function(options) {
-  __parent.Transport.call(this, options);
+  exports.parent.Transport.call(this, options);
 };
 
-oui.mixin(exports.Transport.prototype, __parent.Transport.prototype, {
+oui.mixin(exports.Transport.prototype, exports.parent.Transport.prototype, {
 
   connect: function(backend, callback) {
     var self = this;

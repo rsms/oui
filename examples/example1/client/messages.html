@@ -1,7 +1,7 @@
 <script type="text/javascript" charset="utf-8">
   oui.app.on('start', function(ev){
     // Add header
-    var header = exports.fragment('header');
+    var header = fragment('header');
     $('body').append(header);
 
     // Enable creation form
@@ -27,7 +27,7 @@
     });
 
     // Setup messages
-    var messageList = exports.fragment('list', {}/*, function(){
+    var messageList = fragment('list', {}/*, function(){
       // this is run each time the fragment is rendered (i.e. on update())
       this.find('a[href$=/delete]').click(function(ev){
         removeMessage((/\/(\d+)\/delete$/.exec(this.href))[1]);

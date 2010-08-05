@@ -95,7 +95,7 @@ exports.retry = function(action, callback) {
   }
   var again, backend, onend, self = this;
   onend = function(prevArgs) {
-    console.warn(__name+'.retry: all backends failed. action =>', action);
+    console.warn(module.id+'.retry: all backends failed. action =>', action);
     if (callback) {
       if (!$.isArray(prevArgs)) prevArgs = [];
       if (prevArgs.length === 0) {
@@ -110,7 +110,7 @@ exports.retry = function(action, callback) {
     if (retries === exports.backends.length)
       return onend(prevArgs);
     backend = exports.current();
-    console.debug(__name+' trying '+backend.host+':'+backend.port+' for '+action);
+    console.debug(module.id+' trying '+backend.host+':'+backend.port+' for '+action);
     action(backend, function(err, responseOrHTTPCode) {
       var args = Array.prototype.slice.call(arguments);
       if (typeof responseOrHTTPCode === 'object')
@@ -127,7 +127,7 @@ exports.retry = function(action, callback) {
         // keep track of this backend since it seems to work.
         oui.cookie.set('__oui_backend', b.host+':'+b.port);
       }
-      console.debug(__name+' forwarding response', args);
+      console.debug(module.id+' forwarding response', args);
       if (callback) callback.apply(self, args);
     });
   };
@@ -172,7 +172,7 @@ exports.next = function() {
 
   // sanity check
   if (exports.backends.length === 0) {
-    console.warn(__name+'.backends is empty');
+    console.warn(module.id+'.backends is empty');
     return;
   }
 
@@ -245,10 +245,10 @@ exports.setup = function() {
   // sanity check
   if (exports.backends.length === 0) {
     if (sameOriginBackend) {
-      console.warn(__name+' no available backends found -- forcingly adding same-origin');
+      console.warn(module.id+' no available backends found -- forcingly adding same-origin');
       exports.backends = [sameOriginBackend];
     } else {
-      console.error(__name+' no available backends found');
+      console.error(module.id+' no available backends found');
       return;
     }
   }
@@ -257,7 +257,7 @@ exports.setup = function() {
   for (i=0;(b=exports.backends[i]);++i) {
     b.port = b.port ? parseInt(b.port) : 80;
     if (!b.host) {
-      throw new Error(__name+': inconsistency error: backend without host specification');
+      throw new Error(module.id+': inconsistency error: backend without host specification');
     }
     if (b.path) b.path = '/'+b.path.replace(/^\/+|\/+$/g, '');
     if (!b.url) b.url = jQuery.proxy(backend_url, b);
@@ -274,7 +274,7 @@ exports.setup = function() {
         if (b.host === t[0] && b.port === t[1]) {
           exports.currentIndex = i;
           restored = true;
-          console.debug(__name+' restored previously used backend from cookie: '+b.url());
+          console.debug(module.id+' restored previously used backend from cookie: '+b.url());
           break;
         }
       }
@@ -289,7 +289,7 @@ exports.setup = function() {
         exports.currentIndex = Math.round(Math.random()*hi);
         if (oui.debug) {
           b = exports.backends[exports.currentIndex];
-          console.debug(__name+' selected a random backend: '+
+          console.debug(module.id+' selected a random backend: '+
             (b ? b.url() : '<null>'));
         }
       }

@@ -120,15 +120,6 @@ window.oui.EventEmitter.prototype.addListener =
 // -----------------------------------------------------------------------------
 // Module loading and defining
 
-var moduleHTML = function(module, query){
-  if (query) {
-    query = module.$html.find(query).clone();
-    query.ouiModule = module;
-    return query;
-  }
-  return module.$html;
-};
-
 function filterFragmentWrapperArgs(args, parentId) {
   args = Array.prototype.slice.call(args);
   // case: no id (the modules fragment)
@@ -163,9 +154,7 @@ window.__defm = function(name, root, html, fun) {
     html = null;
   }
 
-  var k, v,
-      module = new window.oui.EventEmitter(),
-      namep = name.split('.'),
+  var k, v, namep = name.split('.'),
       curr = root, n, i = 0, L = namep.length-1;
 
   for ( ; i<L; i++) {
@@ -174,50 +163,40 @@ window.__defm = function(name, root, html, fun) {
       curr[n] = {};
     curr = curr[n];
   }
+  var baseName = namep[i];
+  var module = {id: name};
 
-  module.id = name;
-  
   // fragment accessor
+  var fragid = name.replace(/\./g, '/');
+  function moduleFragment(id) {
+    return window.fragment.apply(undefined,
+      filterFragmentWrapperArgs(arguments, fragid));
+  }
+  moduleFragment.template = function(id) {
+    return window.fragment.template.apply(undefined,
+      filterFragmentWrapperArgs(arguments, fragid));
+  };
   if (window.fragment) {
-    var fragid = name.replace(/\./g, '/');
-    module.fragment = function(id) {
-      return window.fragment.apply(undefined,
-        filterFragmentWrapperArgs(arguments, fragid));
-    };
-    module.fragment.template = function(id) {
-      return window.fragment.template.apply(undefined,
-        filterFragmentWrapperArgs(arguments, fragid));
-    };
     Object.keys(window.fragment).forEach(function(k){
       if (k !== 'template') {
-        module.fragment[k] = window.fragment[k];
+        moduleFragment[k] = window.fragment[k];
       }
     });
   }
 
-  if (!html) {
-    module.__html = function(query){ return moduleHTML(module, query); };
-    $(function(){
-      module.$html = jQuery('#'+module.id.replace(/\./g, '-'));
-    });
-  }
+  // Execute module
+  var moduleExports = {parent: curr || {}};
+  //       this,          exports,       module, fragment
+  fun.call(moduleExports, moduleExports, module, moduleFragment);
 
-  //       this,   exports, __name,   __html,        __parent
-  fun.call(module, module, module.id, module.__html, curr);
-
-  var mname = namep[i], parent = curr[mname];
+  // Add module to our tree
+  var parent = curr[baseName];
   if (parent !== undefined) {
-    var t = typeof parent;
-    if (t === 'object' || t === 'function') {
-      window.oui.mixin(parent, module);
-    } else {
-      for (k in module) {
-        console.warn('tried to overwrite module "'+module.id+'"');
-        break;
-      }
-    }
+    // mix into already existing module
+    window.oui.mixin(parent, moduleExports);
   } else {
-    curr[mname] = module;
+    // this is a new module (just the way we like it)
+    curr[baseName] = moduleExports;
   }
 };
 
@@ -234,8 +213,7 @@ if (window.JSON === undefined && $.toJSON && $.secureEvalJSON) {
 
 // -----------------------------------------------------------------------------
 // oui module
-
-__defm('oui', window, function(exports, __name, __html){
+(function(exports){
 
 var EMPTYFUNC = function(){};
 
@@ -344,4 +322,4 @@ exports.capabilities = {
 };
 
 
-});
+})(window.oui);

@@ -90,7 +90,7 @@ function onHashChange() {
     try {
       route.handler(params, exports.path, prevPath);
 		} catch (e) {
-			console.error('['+__name+'] error when calling handler: '+(e.stack || e),
+			console.error('['+module.id+'] error when calling handler: '+(e.stack || e),
 			  'handler =>', route.handler);
 		}
 	}

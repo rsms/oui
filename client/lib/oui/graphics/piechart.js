@@ -93,4 +93,4 @@ PieChart.prototype.drawUnlessComplete = function(g) {
   }
 };
 
-__parent.PieChart = PieChart;
+exports.parent.PieChart = PieChart;

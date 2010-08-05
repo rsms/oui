@@ -572,7 +572,7 @@ mixin(Source.prototype, {
     this.content = this.content.replace(SOURCE_JSOPT_UNTANGLED_RE, '$1');
     if (cl === this.content.length) {
       this.content = '__defm('+JSON.stringify(this.name)+
-        ', function(exports, __name, __html, __parent){'+
+        ', function(exports, module, fragment){'+
         this.content.replace(/[\r\n][\t ]*$/,'\n')+
         '});/*'+this.name+'*/\n';
     }
