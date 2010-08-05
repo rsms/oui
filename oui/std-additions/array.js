@@ -1,10 +1,15 @@
 // NOTE: this file is used by both the server and client library, thus it need
 //       to work in web browsers.
 
-if (typeof Array.isArray !== 'function') {
-  Array.isArray = function(obj) { return toString.call(obj) === "[object Array]"; };
+if (!Array.isArray) {
+  if (jQuery && jQuery.isArray) {
+    Array.isArray = jQuery.isArray;
+  } else {
+    Array.isArray = function(obj) {
+      return Object.prototype.toString.call(obj) === "[object Array]";
+    };
+  }
 }
-
 if (!Array.prototype.forEach) {
   Array.prototype.forEach =  function(block, ctx) {
     var len = this.length >>> 0;
@@ -35,6 +40,27 @@ if (!Array.prototype.filter) {
       }
     }
     return values;
+  };
+}
+if (!Array.prototype.unshift) {
+  Array.prototype.unshift = function() {
+    this.reverse();
+    var i = arguments.length;
+    while (i--) {
+      this.push(arguments[i]);
+    }
+    this.reverse();
+    return this.length;
+  };
+}
+if (!Array.prototype.indexOf) {
+  Array.prototype.indexOf = function(value, begin) {
+    // no strict flag -- always strict search in this impl.
+    var i, L = this.length;
+    for (i = +begin || 0; i < L; ++i) {
+      if (this[i] === value) return i;
+    }
+    return -1;
   };
 }
 

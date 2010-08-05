@@ -42,11 +42,12 @@ function requestCompleteHandler(req, res) {
       return;
 
     // format response object
-    if (body && body.constructor !== String)
-      body = res.format(body)
-
-    // send and mark as finished
-    req.sendResponse(body)
+    if (body && body.constructor !== String) {
+      res.sendObject(body);
+    } else {
+      // send and mark as finished
+      req.sendResponse(body);
+    }
   }
   catch(exc) {
     return res.sendError(exc)
@@ -214,7 +215,8 @@ exports.createServer = function() {
       // no param specs
       return handler;
     }
-    var filteredHandler = function(params, req, res) {
+    // have param specs -- wrap in sanitation handler
+    function paramSanitationFilter(params, req, res) {
       var sanitizedParams = {};
       var err = oui.util.sanitizeInput(params, sanitizedParams, paramSpec);
       if (err) {
@@ -223,7 +225,7 @@ exports.createServer = function() {
         return handler(sanitizedParams, req, res);
       }
     }
-    return filteredHandler;
+    return paramSanitationFilter;
   }
   // One handler per GET, POST, etc
   Routes.METHODS.forEach(function(method){

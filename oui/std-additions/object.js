@@ -33,6 +33,10 @@ if (typeof Object.keys !== 'function') {
   };
 }
 
+if (typeof Object.getOwnPropertyNames !== 'function') {
+  Object.getOwnPropertyNames = Object.keys;
+}
+
 if (typeof Object.deepEquals !== 'function') {
   var isArguments = function (object) {
     return Object.prototype.toString.call(object) === '[object Arguments]';

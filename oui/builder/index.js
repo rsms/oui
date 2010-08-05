@@ -144,19 +144,26 @@ mixin(Product.prototype, {
       var queue = new util.CallQueue(self, false, function(err){
         fs.close(fd, function(){ callback(err); });
       });
+      // rank modules
+      self.sources.forEach(function(source){
+        var lcname = source.name.toLowerCase();
+        if (lcname === 'jquery') {
+          source.priority = 10;
+        } else if (lcname === 'index') {
+          source.priority = 9;
+        } else if (lcname.substr(0,6) === 'jquery') {
+          source.priority = 8;
+        } else {
+          source.priority = 0;
+        }
+      });
       // sort modules
       self.sources.sort(function(a, b){
+        if (a.priority !== b.priority)
+          return (a.priority > b.priority) ? -1 : 1;
         return (a.name.toLowerCase() < b.name.toLowerCase()) ? -1 : 1;
       });
-      // jquery module has top prioritity
-      for (var i=0; i<self.sources.length; i++) {
-        var source = self.sources[i];
-        if (source.name.toLowerCase() === 'jquery') {
-          self.sources.splice(i,1);
-          self.sources.unshift(source);
-          break; //i--;
-        }
-      }
+      //sys.log(self.sources.map(function(a){ return a.name }).join('\n'));
       // queue writes
       if (header && header.length !== 0)
         queue.push(function(cl){ fwriteall(fd, header, cl); });
@@ -225,9 +232,9 @@ mixin(Product.prototype, {
 // -------------------------------------------------------------------------
 
 const SOURCE_DEMUXABLE_TYPE_RE = /^x?html?$/i;
-const SOURCE_JSOPT_UNTANGLED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:untangled/igm;
-const SOURCE_JSOPT_UNOPTIMIZED_RE = /(?:^|[\r\n])\s*\/\/\s*oui:unoptimized/igm;
-const SOURCE_JSOPT_NOLINT_RE = /(?:^|[\r\n])\s*\/\/\s*oui:nolint/igm;
+const SOURCE_JSOPT_UNTANGLED_RE = /(^|[\r\n])\s*\/\/\s*oui:untangled/igm;
+const SOURCE_JSOPT_UNOPTIMIZED_RE = /(^|[\r\n])\s*\/\/\s*oui:unoptimized/igm;
+const SOURCE_JSOPT_NOLINT_RE = /(^|[\r\n])\s*\/\/\s*oui:nolint/igm;
 const SOURCE_HTMLOPT_UNTANGLED_RE = /<\!--[\r\n\s]*oui:untangled[\s\r\n]*-->/igm;
 
 function Source(builder, filename, relname, content) {
@@ -286,6 +293,10 @@ mixin(Source.prototype, {
 
   get domname() {
     return this.name.replace(/\./g, '-');
+  },
+
+  get fragname() {
+    return this.name.replace(/\./g, '/');
   },
 
   // Indicates if the source is "external" and should not be included in product output.
@@ -539,12 +550,17 @@ mixin(Source.prototype, {
     }
 
     if (tangle) {
-      this.content = '<module id='+JSON.stringify(this.domname)+'>\n    '+
+      this.content = this.content.replace(
+        /(<[\w_\-]+[ \t][^>]*fragment=")([^"]+)"/g,
+        '$1'+this.fragname+'/$2"'
+      );
+      this.content = '<ouimodule fragment='+JSON.stringify(this.fragname)+
+        '>\n    '+
         this.content
           .replace(/^[\r\n\s]+/, '')
           .replace(/[\r\n]/gm, '\n    ')
           .replace(/[\r\n\s]*$/, '\n')+
-        '  </module>\n';
+        '  </ouimodule>\n';
     }
 
     if (callback) callback();
@@ -553,7 +569,7 @@ mixin(Source.prototype, {
   _compileJS: function(callback) {
     // Tangle (disable with "oui:untangled")
     var cl = this.content.length, self = this;
-    this.content = this.content.replace(SOURCE_JSOPT_UNTANGLED_RE, '');
+    this.content = this.content.replace(SOURCE_JSOPT_UNTANGLED_RE, '$1');
     if (cl === this.content.length) {
       this.content = '__defm('+JSON.stringify(this.name)+
         ', function(exports, __name, __html, __parent){'+
@@ -565,7 +581,7 @@ mixin(Source.prototype, {
     // Only makes sense when we have a callback.
     if (callback) {
       var cl = this.content.length;
-      this.content = this.content.replace(SOURCE_JSOPT_NOLINT_RE, '');
+      this.content = this.content.replace(SOURCE_JSOPT_NOLINT_RE, '$1');
       if (cl === this.content.length) {
         var problems = this._lintJS();
         if (problems) {
@@ -618,7 +634,7 @@ mixin(Source.prototype, {
     // Optimize (disable with "oui:unoptimized")
     if (this.builder.optimize > 0) {
       var cl = this.content.length;
-      this.content = this.content.replace(SOURCE_JSOPT_UNOPTIMIZED_RE, '');
+      this.content = this.content.replace(SOURCE_JSOPT_UNOPTIMIZED_RE, '$1');
       if (cl === this.content.length) {
         var preSize = this.content.length;
         this.content = jsmin.jsmin('', this.content, this.builder.optimize);

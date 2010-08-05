@@ -182,44 +182,58 @@ mixin(http.ServerResponse.prototype, {
   /**
    * Build a error response object.
    *
-   * {error:{
-   *   title: <string>,
-   *   message: <string>,
-   *   stack: [<string>, ..]
-   * }}
+   * Returns:
+   * {
+   *   statusCode: <int>,
+   *   error:{
+   *     title: <string>,
+   *     message: <string>,
+   *     stack: [<string>, ..]
+   *   }
+   * }
    */
-  mkError: function(status, title, message, exception) {
-    if (typeof status === 'object' && status.stack !== undefined) {
-      exception = status;
-      this.status = exception.statusCode ? parseInt(exception.statusCode) : 500;
+  mkError: function(status, title, message, error) {
+    var e = {}, statusCode = 500;
+    if (typeof status === 'object') {
+      error = status;
+      statusCode = parseInt(error.statusCode);
     } else {
-      this.status = parseInt(status) || 500
+      statusCode = parseInt(status);
     }
-    e = {};
+    if (isNaN(statusCode)) {
+      statusCode = 500;
+    }
 
     if (title) {
       e.title = String(title);
-    } else if (exception && exception.title) {
-      e.title = String(exception.title);
-    } else if (exception && exception.type) {
-      e.title = String(exception.type);
     } else {
-      e.title = http.STATUS_CODES[status] || 'Error';
+      e.title = http.STATUS_CODES[statusCode];
+      if (!e.title) {
+        if (error && error.title) {
+          e.title = String(error.title);
+        } else if (error && error.type) {
+          e.title = String(error.type);
+        } else {
+          e.title = 'Error';
+        }
+      }
     }
 
-    if (exception) {
+    if (error) {
       e.message = message ? String(message)+' ' : ''
-      if (exception.message)
-        e.message += exception.message
-      else if (e.message.length === 0)
-        delete e.message // no message
-      if (exception.stack)
-        e.stack = exception.stack.split(/[\r\n]+ +/m)
+      if (error.message) {
+        e.message += error.message;
+      } else if (e.message.length === 0) {
+        delete e.message; // no message
+      }
+      error.title = e.title;
+      if (error.stack) {
+        e.stack = error.stack.split(/[\r\n]+ +/m);
+      }
     } else if (message) {
       e.message = String(message);
     }
-
-    return {error: e};
+    return {statusCode: statusCode, error: e};
   },
 
   tryGuard: function(fun, msg) {
@@ -233,10 +247,11 @@ mixin(http.ServerResponse.prototype, {
 
   // Send a standard response with optional HTTP status code.
   send: function(statusCode, obj) {
-    if (!statusCode)
+    if (!statusCode) {
       statusCode = this.status || 200;
-    else
+    } else {
       this.status = statusCode;
+    }
     if (http.BODYLESS_STATUS_CODES.indexOf(statusCode)) {
       this.request.sendResponse();
     } else {
@@ -253,18 +268,21 @@ mixin(http.ServerResponse.prototype, {
   },
 
   sendObject: function(responseObject, statusCode) {
-    if (typeof statusCode === 'number')
+    if (responseObject instanceof Error) {
+      responseObject = this.mkError(responseObject);
+    }
+    if (statusCode && typeof statusCode === 'number') {
       this.status = statusCode;
-    var body = this.format(responseObject)
+    } else if ('statusCode' in responseObject) {
+      this.status = responseObject.statusCode;
+      delete responseObject.statusCode;
+    }
+    var body = this.format(responseObject);
     this.request.sendResponse(body)
   },
 
   sendError: function(status, title, message, error) {
-    if (status instanceof Error) {
-      error = status;
-      status = undefined;
-    }
-    var obj = this.mkError(status, title, message, error);
+    var obj = this.mkError.apply(this, arguments);
     this.request.connection.server.debug && sys.log(
       '[oui] sendError '+sys.inspect(obj.error));
     this.sendObject(obj);

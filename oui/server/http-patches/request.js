@@ -55,9 +55,6 @@ mixin(http.IncomingMessage.prototype, {
       }
     }
 
-    // Parse content length header
-    self.contentLength = parseInt(self.headers['content-length'] || 0)
-
     // note: cookies must be parsed before session
 
     // session
@@ -122,7 +119,9 @@ mixin(http.IncomingMessage.prototype, {
   startParsingRequestEntity: function(callback) {
     // todo: handle other kind of content, like file uploads and arbitrary data.
     var server = this.connection.server, res = this.response;
-    if (this.contentLength < 1) {
+    this.contentLength = this.headers['content-length'];
+    if (this.contentLength === undefined 
+        || isNaN(this.contentLength = parseInt(this.contentLength)) ) {
       var e = new Error();
       e.title = 'Length Required';
       e.statusCode = 411;

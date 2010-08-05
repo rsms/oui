@@ -2,9 +2,21 @@
 /**
  * Oui client standard library.
  */
-window.oui = {};
-if (window.OUI_DEBUG) window.oui.debug = true;
+window.oui = {
+  debug: ((window.OUI_DEBUG !== undefined) ? !!window.OUI_DEBUG : true)
+};
 window.APP_VERSION = "{#APP_VERSION#}"; // todo: move to oui.app
+
+// -----------------------------------------------------------------------------
+// Prototype setter
+var protoKey = '__proto__';
+if (Object[protoKey]) {
+  // modern host
+  window.oui.protoset = function(dst, key, fun) { dst[protoKey][key] = fun; };
+} else {
+  // classic host
+  window.oui.protoset = function(dst, key, fun) { dst.prototype[key] = fun; };
+}
 
 // -----------------------------------------------------------------------------
 // oui.mixin
@@ -57,7 +69,7 @@ else {
 
 window.oui.EventEmitter = function() {};
 window.oui.mixin(window.oui.EventEmitter.prototype, {
-  addListener: function(type, once, listener) {
+  on: function(type, once, listener) {
     if (typeof once === 'function') {
       listener = once;
       once = false;
@@ -68,10 +80,6 @@ window.oui.mixin(window.oui.EventEmitter.prototype, {
       $(this.eventTarget || this).bind(type, listener);
     }
     return this;
-  },
-
-  on: function(type, once, listener) {
-    return this.addListener(type, once, listener);
   },
 
   one: function(type, listener) {
@@ -105,6 +113,9 @@ window.oui.mixin(window.oui.EventEmitter.prototype, {
     return this;
   }
 });
+// backwards compatibility alias
+window.oui.EventEmitter.prototype.addListener =
+  window.oui.EventEmitter.prototype.on;
 
 // -----------------------------------------------------------------------------
 // Module loading and defining
@@ -118,29 +129,44 @@ var moduleHTML = function(module, query){
   return module.$html;
 };
 
+function filterFragmentWrapperArgs(args, parentId) {
+  args = Array.prototype.slice.call(args);
+  // case: no id (the modules fragment)
+  if (args.length === 0 || typeof args[0] !== 'string') {
+    args = [parentId].concat(args);
+  } else {
+    var id0 = args[0].charAt(0);
+    if (id0 === '/') {
+      // absolute fragment id (strip away leading "/")
+      args[0] = args[0].substr(1);
+    } else {
+      // relative fragment id
+      if (args[0].length) {
+        args[0] = parentId + '/' + args[0];
+      } else {
+        args[0] = parentId;
+      }
+    }
+  }
+  return args;
+}
+
 // Define a module
 window.__defm = function(name, root, html, fun) {
   if (arguments.length === 2) {
+    // __defm(name, fun)
     fun = root;
     root = window;
-  }
-  else if (arguments.length === 3) {
+  } else if (arguments.length === 3) {
+    // __defm(name, root, fun)
     fun = html;
     html = null;
   }
 
-  var k, v, module = new window.oui.EventEmitter(),
+  var k, v,
+      module = new window.oui.EventEmitter(),
       namep = name.split('.'),
       curr = root, n, i = 0, L = namep.length-1;
-
-  module.id = name;
-
-  if (!html) {
-    module.__html = function(query){ return moduleHTML(module, query); };
-    $(function(){
-      module.$html = jQuery('#'+module.id.replace(/\./g, '-'));
-    });
-  }
 
   for ( ; i<L; i++) {
     n = namep[i];
@@ -149,7 +175,34 @@ window.__defm = function(name, root, html, fun) {
     curr = curr[n];
   }
 
-  // this, exports, __name, __html, __parent
+  module.id = name;
+  
+  // fragment accessor
+  if (window.fragment) {
+    var fragid = name.replace(/\./g, '/');
+    module.fragment = function(id) {
+      return window.fragment.apply(undefined,
+        filterFragmentWrapperArgs(arguments, fragid));
+    };
+    module.fragment.template = function(id) {
+      return window.fragment.template.apply(undefined,
+        filterFragmentWrapperArgs(arguments, fragid));
+    };
+    Object.keys(window.fragment).forEach(function(k){
+      if (k !== 'template') {
+        module.fragment[k] = window.fragment[k];
+      }
+    });
+  }
+
+  if (!html) {
+    module.__html = function(query){ return moduleHTML(module, query); };
+    $(function(){
+      module.$html = jQuery('#'+module.id.replace(/\./g, '-'));
+    });
+  }
+
+  //       this,   exports, __name,   __html,        __parent
   fun.call(module, module, module.id, module.__html, curr);
 
   var mname = namep[i], parent = curr[mname];
@@ -167,6 +220,17 @@ window.__defm = function(name, root, html, fun) {
     curr[mname] = module;
   }
 };
+
+// -----------------------------------------------------------------------------
+// Make sure we have JSON.stringify and JSON.parse
+
+if (window.JSON === undefined && $.toJSON && $.secureEvalJSON) {
+  // Old browser -- use jquery.json
+  window.JSON = {
+    stringify: $.toJSON,
+    parse: $.secureEvalJSON
+  };
+}
 
 // -----------------------------------------------------------------------------
 // oui module
@@ -252,6 +316,8 @@ exports.inherits = function (ctor, superCtor, prototypeMixin) {
   return ctor.prototype;
 };
 
+// JS encode
+exports.jsesc = function(obj) { return JSON.stringify(obj); };
 
 // URL encode
 exports.urlesc = function(s) { return encodeURIComponent(String(s)); };
