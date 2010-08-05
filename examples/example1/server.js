@@ -26,7 +26,9 @@ server.GET('/messages', {onlyKeys:'boolean'}, function(params, req, res){
   if (params.onlyKeys) {
     return Object.keys(messages.map);
   } else {
-    return messages.map;
+    return Object.keys(messages.map).map(function(k){
+      return {id:k, object:messages.map[k]};
+    });
   }
 });
 
@@ -62,7 +64,7 @@ function removeHandler(params, req, res) {
   var message = messages.map[params.id];
   if (!message)
     return res.send(404);
-  messages.map[params.id] = undefined;
+  delete messages.map[params.id];
   // send the old message to the client
   return {message: message};
 }
@@ -70,4 +72,4 @@ var argspec = {id:{type:'int'}};
 // DELETE is the "correct" way...
 server.DELETE('/messages/:id', argspec, removeHandler);
 // ...but old browsers only support GET and POST
-server.POST('/messages/:id/delete', argspec, removeHandler);
+server.GET('/messages/:id/delete', argspec, removeHandler);
