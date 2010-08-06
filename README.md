@@ -2,9 +2,9 @@
 
 Oui is a kit and framework for building larger websites, in the same fashion as networked and distributed desktop applications.
 
-- All code (on the server and in the client) is modern JavaScript
-- Server runs [node.js](http://nodejs.org/)
+- All code is modern JavaScript -- by [Node.js](http://nodejs.org/) and in the browser.
 - The user interface is completely handled client-side
+- Client-server communication is REST-ful and exchange structured data (JSON)
 - All JavaScript, HTML and CSS is namespaced (derived from file structure)
 
 Normally this is how rich HTML clients are designed:
