@@ -32,7 +32,7 @@ The server keeps no persistent state, thus allowing for scalability:
 - Multi-site support
   - Clients connect to different server instances (e.g. host1.server.com:81, host4.server.com:80, etc)
   - Which server instance to connect to is chosen by random (with some weightening) for "new" clients
-  - Clients sticks to a server instance as long as the server does not reply with any 5xx responses (in which case the client selects a new server using round-robin).
+  - Clients "stick with" a server instance as long as the server does not reply with a 5xx response (in which case the client selects a new server using round-robin).
   - When a server instance fails (crashes) the client will automatically connect ti a new backend and re-send the request (which caused the detection of a faulty server).
 - Built-in authentication
   - Challenge-response with intermediate, cacheable representation
