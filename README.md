@@ -1,6 +1,6 @@
 # oui
 
-Oui is a kit and framework for building larger websites. Design websites like you would design a networked, distributed desktop application.
+Oui is a kit and framework for building larger websites, in the same fashion as networked and distributed desktop applications.
 
 - All code (on the server and in the client) is modern JavaScript
 - Server runs [node.js](http://nodejs.org/)
